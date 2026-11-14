@@ -905,6 +905,7 @@ function vHome() {
     const nd = learnedIds().map(id => S.words[id][1]).sort((a, b) => a - b)[0];
     h += '<section class="card action"><div class="goal-ring">' + ringSVG(wait ? 0 : 1) + '<span>' + (wait ? '<span class="num">' + wait + '</span>' : ico('check')) + '</span></div><div class="grow"><p class="eyebrow">今日复习</p><h3>' + (wait ? wait + ' 个词等 10 分钟后再考' : '现在没有到期的词') + '</h3><p class="sub">' + (wait ? '刚才选了“不认识”的词，过一会儿回来再考一次。' : '下一批在' + (nd - t <= 1 ? '明天' : ' ' + fmtDay(nd)) + '。') + (soon ? ' 有 ' + soon + ' 个快到期或没记牢的词可以提前复习。' : '') + '</p></div>' + (soon || wait ? '<a class="btn" href="#review">去看看</a>' : '') + '</section>';
   }
+  h += '<section class="card action"><div class="grow"><p class="eyebrow">自由练习</p><h3>七种训练模式</h3><p class="sub">单词卡、选义、选词、听音、拼写、填空、限时模拟。</p></div><button class="btn" data-act="pracHub">去练习</button></section>';
   const ts = todaySentence();
   if (next) Clips.pack(next.id);
   if (ts) {
@@ -1162,11 +1163,11 @@ function revLanding() {
     h += '<section class="card stack" style="align-items:flex-start"><p class="eyebrow">提前复习</p><p class="sub">' + soon.length + ' 个词还没到期，但 3 天内就要到期，或者上次没记牢。想多练可以提前考，结果同样计入复习计划。</p>'
       + '<button class="btn" data-act="revSoon">提前复习 ' + Math.min(ROUND_MAX, soon.length) + ' 个</button></section>';
   }
+  h += pracHub();
   if (learned.length) {
     const lv = [0, 0, 0];
     learned.forEach(id => { const x = S.words[id][0]; lv[x >= 5 ? 2 : x >= 3 ? 1 : 0]++; });
-    h += '<section class="card stack"><h2 class="h-sec">词库熟练度</h2><div class="tiles" style="grid-template-columns:repeat(3,1fr)"><div class="tile"><span>刚学会</span><b>' + lv[0] + '</b><small>间隔 1–3 天</small></div><div class="tile"><span>正在巩固</span><b>' + lv[1] + '</b><small>间隔 7–14 天</small></div><div class="tile"><span>已掌握</span><b>' + lv[2] + '</b><small>间隔 30 天以上</small></div></div>'
-      + '<div class="row"><button class="linkbtn" data-act="revFree">随机练习 ' + Math.min(10, learned.length) + ' 个（不影响复习计划）</button></div></section>';
+    h += '<section class="card stack"><h2 class="h-sec">词库熟练度</h2><div class="tiles" style="grid-template-columns:repeat(3,1fr)"><div class="tile"><span>刚学会</span><b>' + lv[0] + '</b><small>间隔 1–3 天</small></div><div class="tile"><span>正在巩固</span><b>' + lv[1] + '</b><small>间隔 7–14 天</small></div><div class="tile"><span>已掌握</span><b>' + lv[2] + '</b><small>间隔 30 天以上</small></div></div></section>';
   }
   return h + '</div>';
 }
@@ -1265,6 +1266,212 @@ function revQuizNext() {
   window.scrollTo(0, 0);
 }
 
+/* ---------- 自由练习：自己挑一种训练模式 ---------- */
+// 不改复习间隔；答错的已学词只标成“没记牢”，下次复习排前面。不计分、不升级。
+const PMODES = [
+  ['cards', '卡', '单词卡', '翻卡速记 · 带发音'],
+  ['id2zh', '义', '看词选义', '印尼语 → 中文'],
+  ['zh2id', '词', '看义选词', '中文 → 印尼语'],
+  ['listen', '听', '听音选义', '只听发音 → 中文'],
+  ['spell', '拼', '拼写挑战', '点字母拼单词'],
+  ['fill', '填', '句子填空', '例句挖空 · 选词'],
+  ['mock', '考', '模拟挑战', '15 题 · 限时 10 分钟']
+];
+const PMODE = {}; PMODES.forEach(m => { PMODE[m[0]] = m; });
+const MOCK_N = 15, MOCK_MS = 10 * 60 * 1000, PRAC_N = 10;
+const spellable = w => /^[a-z]+(?:[ -][a-z]+)*$/i.test(w.w) && w.w.length >= 2 && w.w.length <= 16;
+function pracScope() {
+  const v = UI.pscope || 'learned';
+  if (v === 'all') return { v, words: WLIST, label: '全部课程' };
+  if (TOPIC_BY[v]) return { v, words: TOPIC_BY[v].words, label: '第 ' + TOPIC_BY[v].n + ' 课 · ' + TOPIC_BY[v].zh };
+  return { v: 'learned', words: learnedIds().map(id => WORDS[id]), label: '已学的词' };
+}
+function pracHub() {
+  const sc = pracScope(), n = sc.words.length, nLearned = learnedIds().length;
+  const opts = '<option value="learned"' + (sc.v === 'learned' ? ' selected' : '') + '>已学的词（' + nLearned + ' 个）</option><option value="all"' + (sc.v === 'all' ? ' selected' : '') + '>全部课程（' + WLIST.length + ' 个）</option>'
+    + TOPICS.map(t => '<option value="' + t.id + '"' + (sc.v === t.id ? ' selected' : '') + '>第 ' + t.n + ' 课 · ' + esc(t.zh) + '（' + t.words.length + ' 个）</option>').join('');
+  return '<section class="card stack" id="prac-hub"><h2 class="h-sec">自由练习 <small>选一种训练模式</small></h2>'
+    + '<div class="set"><label for="pscope">练哪些词</label><select id="pscope">' + opts + '</select></div>'
+    + (n ? '<div class="pmodes">' + PMODES.map(m => '<button class="pmode" data-act="pracStart" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div>'
+      + '<p class="hint">先用单词卡熟悉，再用拼写和填空巩固，最后用模拟挑战检验。练习不改变复习计划，答错的词下次复习会排在前面。</p>'
+      : '<p class="sub">还没有学过的词。先去课程里学几个，或者在上面换成“全部课程”或某一课。</p>')
+    + '</section>';
+}
+function pracQuestion(w, kind) {
+  const exs = w.ex.map((e, k) => k).filter(k => hasMark(w.ex[k]));
+  if (kind === 'fill' && !exs.length) kind = 'zh2id';
+  if (kind === 'spell' && !spellable(w)) kind = 'zh2id';
+  if (kind === 'listen' && !canSpeak()) kind = 'id2zh';
+  const q = { w: w.id, kind, ex: exs.length ? exs[rnd(exs.length)] : 0, ans: null };
+  if (kind === 'spell') {
+    // 字母块：答案里的字母打乱，再混进 3 个干扰字母；空格和连字符直接给出
+    const letters = w.w.toLowerCase().replace(/[^a-z]/g, '').split('');
+    const extra = shuffle('aeiounrstkmlgdbph'.split('').filter(c => !letters.includes(c))).slice(0, 3);
+    q.tiles = shuffle(letters.concat(extra)); q.typed = [];
+  } else q.opts = makeOpts(w, kind === 'zh2id' || kind === 'fill' ? 'zh2id' : 'id2zh');
+  return q;
+}
+function startPractice(mode, ids) {
+  let pool = ids ? ids.map(id => WORDS[id]).filter(Boolean) : pracScope().words.slice();
+  if (mode === 'fill') pool = pool.filter(w => w.ex.some(hasMark));
+  if (mode === 'spell') pool = pool.filter(spellable);
+  if (!pool.length) { toast('这个范围里没有适合这种练习的词'); return; }
+  const n = mode === 'mock' ? MOCK_N : mode === 'cards' ? 20 : PRAC_N;
+  const words = shuffle(pool).slice(0, n);
+  // 模拟挑战要凑满 15 题：词不够时再抽一轮，同一个词第二次出现会换一种题型
+  while (mode === 'mock' && pool.length >= 5 && words.length < n) shuffle(pool).some(w => { if (w !== words[words.length - 1]) words.push(w); return words.length >= n; });
+  const mix =['id2zh', 'zh2id', 'listen', 'fill', 'spell'];
+  const p = { mode, n: words.length, i: 0, right: 0, wrong: [], done: false, flip: false, t0: Date.now(), limit: mode === 'mock' ? MOCK_MS : 0, timeout: false, used: 0, scope: ids ? '刚才答错的词' : pracScope().label };
+  p.qs = mode === 'cards' ? words.map(w => ({ w: w.id })) : words.map((w, k) => pracQuestion(w, mode === 'mock' || mode === 'mix' ? mix[k % mix.length] : mode));
+  UI.prac = p;
+  words.slice(0, 6).forEach(w => Clips.pack(w.topic));
+  go('practice');
+  window.scrollTo(0, 0);
+  if (p.limit) {
+    p.timer = setInterval(() => {
+      if (UI.prac !== p || p.done) { clearInterval(p.timer); return; }
+      const left = p.limit - (Date.now() - p.t0), el = $('#ptimer');
+      if (left <= 0) { p.timeout = true; pracFinish(); return; }
+      if (el) el.textContent = clock(left);
+    }, 1000);
+  }
+  pracSay();
+}
+const clock = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+function pracSay() {
+  const p = UI.prac;
+  if (!p || p.done) return;
+  const q = p.qs[p.i], w = WORDS[q.w];
+  if (p.mode === 'cards') { if (!p.flip) autoSay(w.w); }
+  else if (q.kind === 'listen' || q.kind === 'spell') TTS.play(w.w, w.w, { noLoop: true });
+  else if (q.kind === 'id2zh') autoSay(w.w);
+}
+function pracFinish() {
+  const p = UI.prac;
+  if (!p || p.done) return;
+  p.done = true; p.used = Date.now() - p.t0;
+  clearInterval(p.timer);
+  TTS.stop();
+  // 模拟挑战时间到：没答的题算错
+  if (p.mode !== 'cards') p.qs.forEach(q => { if (!q.ans && !p.wrong.includes(q.w)) p.wrong.push(q.w); });
+  if (UI.route.name === 'practice') { render(); window.scrollTo(0, 0); }
+}
+function pracAnswer(v) {
+  const p = UI.prac;
+  if (!p || p.done || p.mode === 'cards') return;
+  const q = p.qs[p.i];
+  if (q.ans) return;
+  const w = WORDS[q.w], norm = s => String(s).toLowerCase().replace(/[^a-z]/g, '');
+  const ok = q.kind === 'spell' ? norm(v) === norm(w.w) : v === q.w;
+  q.ans = { v, ok };
+  if (ok) p.right++;
+  else {
+    if (!p.wrong.includes(q.w)) p.wrong.push(q.w);
+    const s = S.words[q.w];
+    if (s && s[0] > 0 && s[6] !== 0 && s[6] !== 1) { s[6] = 1; s[2] = Date.now(); Sync.mark('progress'); }
+  }
+  bump('r');
+  if (p.mode === 'mock') { pracNext(); return; }   // 模拟挑战不逐题讲解，最后一起看
+  render();
+  if (!ok) { const box = $('.qopts') || $('.ptiles'); if (box) box.classList.add('shake'); }
+  autoSay(w.w);
+}
+function pracNext() {
+  const p = UI.prac;
+  if (!p || p.done) return;
+  if (p.i >= p.qs.length - 1) { pracFinish(); return; }
+  p.i++; p.flip = false;
+  TTS.stop();
+  WORDS[p.qs[p.i].w] && Clips.pack(WORDS[p.qs[p.i].w].topic);
+  render();
+  window.scrollTo(0, 0);
+  pracSay();
+}
+function pracTile(k) {
+  const p = UI.prac, q = p && !p.done && p.qs[p.i];
+  if (!q || q.kind !== 'spell' || q.ans || q.typed.includes(k)) return;
+  const need = WORDS[q.w].w.replace(/[^a-z]/gi, '').length;
+  q.typed.push(k);
+  if (q.typed.length >= need) pracAnswer(q.typed.map(i => q.tiles[i]).join('')); else render();
+}
+function pracBack() {
+  const p = UI.prac, q = p && !p.done && p.qs[p.i];
+  if (q && q.kind === 'spell' && !q.ans && q.typed.length) { q.typed.pop(); render(); }
+}
+function pracSpellView(q, w) {
+  // 按答案的形状画格子：字母位是空格子，空格和连字符照原样显示
+  let k = 0;
+  const typed = q.typed.map(i => q.tiles[i]);
+  // 一个词的格子包在一起，换行时不会把词从中间拆开
+  const slots = w.w.split(/([^a-z]+)/i).map(part => !part ? '' : /^[a-z]/i.test(part)
+    ? '<span class="pword">' + part.split('').map(() => '<span class="pslot' + (typed[k] ? ' on' : '') + '">' + (typed[k++] || '') + '</span>').join('') + '</span>'
+    : '<span class="psep">' + (part.trim() ? esc(part.trim()) : '') + '</span>').join('');
+  let h = '<div class="pslots' + (q.ans ? (q.ans.ok ? ' right' : ' wrong') : '') + '" lang="id" aria-label="已经拼出的字母">' + slots + '</div>';
+  if (!q.ans) {
+    h += '<div class="ptiles">' + q.tiles.map((c, i) => '<button class="ptile" data-act="pracTile" data-k="' + i + '"' + (q.typed.includes(i) ? ' disabled' : '') + ' lang="id">' + c + '</button>').join('')
+      + '<button class="ptile back" data-act="pracBack" aria-label="退格"' + (q.typed.length ? '' : ' disabled') + '>' + ico('back') + '</button></div>'
+      + '<p class="qkind" style="text-align:center">点字母拼出来，电脑上也可以直接打字</p>';
+  }
+  return h;
+}
+function pracDone(p) {
+  const total = p.qs.length, cards = p.mode === 'cards', m = PMODE[p.mode] || ['', '', '混合练习'];
+  let h = '<div class="page wrap"><section class="card stack"><p class="eyebrow">' + esc(m[2]) + ' · ' + esc(p.scope) + '</p>';
+  if (cards) h += '<h2 class="h-sec">看完了 ' + total + ' 张单词卡</h2>';
+  else {
+    h += '<h2 class="h-sec">答对 ' + p.right + ' / ' + total + '</h2>';
+    if (p.mode === 'mock') h += '<p class="sub">' + (p.timeout ? '时间到，没答完的题算错。' : '用时 ' + clock(p.used) + '。') + '</p>';
+    if (p.wrong.length) h += '<p class="sub">这些词没答对，已学过的下次复习会排在前面：</p><div class="wlist">' + p.wrong.map(id => wordRow(WORDS[id])).join('') + '</div>';
+    else h += '<p class="sub">全部答对。</p>';
+  }
+  h += '</section><div class="stack">'
+    + (!cards && p.wrong.length ? '<button class="btn primary block" data-act="pracRetry" data-ids="' + esc(p.wrong.join('|')) + '">再练一遍错的</button>' : '')
+    + '<button class="btn block' + (!cards && p.wrong.length ? '' : ' primary') + '" data-act="pracStart" data-m="' + (PMODE[p.mode] ? p.mode : 'id2zh') + '">再来一组</button>'
+    + '<button class="btn block" data-act="pracExit">换一种练习</button></div></div>';
+  return h;
+}
+function vPractice() {
+  const p = UI.prac;
+  if (!p) return vReview();
+  if (p.done) return pracDone(p);
+  const q = p.qs[p.i], w = WORDS[q.w], m = PMODE[p.mode] || ['', '', '混合练习'];
+  let h = '<div class="session wrap"><div class="s-head"><button class="icon-btn" data-act="pracExit" aria-label="结束练习">' + ico('close') + '</button><div class="bar"><i style="width:' + f1(p.i / p.qs.length * 100) + '%"></i></div><span class="s-count num">' + (p.i + 1) + '/' + p.qs.length + '</span>'
+    + (p.limit ? '<span class="tag ptimer num" id="ptimer" aria-label="剩余时间">' + clock(p.limit - (Date.now() - p.t0)) + '</span>' : '') + '</div>';
+  if (p.mode === 'cards') {
+    h += '<p class="eyebrow">单词卡 · ' + esc(p.scope) + '</p><button class="card flash pcard" data-act="pracFlip" aria-label="翻面">';
+    if (!p.flip) h += '<span class="w-word" lang="id">' + esc(w.w) + '</span><span class="w-ipa">' + esc(IPA.of(w.w)) + '</span><span class="qkind">想一想意思，再点卡片翻面</span>';
+    else h += '<span class="zh-big">' + esc(w.zh) + '</span><span class="tag pos">' + (POSN[w.pos] || '') + '</span><span class="w-ipa" lang="id" style="margin-top:0">' + esc(w.w) + '</span>';
+    h += '</button><div class="row" style="justify-content:center">' + sayBtn(w.w) + '<button class="linkbtn" data-act="word" data-id="' + esc(w.id) + '">打开单词卡</button></div>';
+    if (p.flip) h += '<ol class="exs">' + w.ex.map(e => exItem(e, { bare: true })).join('') + '</ol>';
+    h += '<div class="s-foot"><button class="btn" data-act="pracPrev"' + (p.i ? '' : ' disabled') + '>上一张</button><button class="btn primary" data-act="pracNext">' + (p.i >= p.qs.length - 1 ? '完成' : '下一张') + '</button></div>';
+    return h + '</div>';
+  }
+  const a = q.ans, e = w.ex[q.ex];
+  const kindTxt = { id2zh: '选出中文意思', zh2id: '选出对应的印尼语', listen: '听发音，选出中文意思', spell: '拼出这个词', fill: '选出填进空格的词' }[q.kind];
+  h += '<p class="eyebrow">' + esc(m[2]) + ' · ' + kindTxt + '</p><section class="card qprompt">';
+  if (q.kind === 'id2zh') h += '<div class="w-word" lang="id">' + esc(w.w) + '</div>' + sayBtn(w.w);
+  else if (q.kind === 'zh2id') h += '<div class="zh-big">' + esc(w.zh) + '</div><span class="tag pos">' + (POSN[w.pos] || '') + '</span>';
+  else if (q.kind === 'listen') h += '<button class="say bigplay" data-say="' + esc(w.w) + '" aria-label="再听一遍">' + ico('play') + '</button><p class="qkind">没听清就再点一下</p>';
+  else if (q.kind === 'fill') h += '<p class="cloze" lang="id">' + (a ? hl(e.id) : blankOut(e.id)) + '</p><p class="ex-zh">' + esc(e.zh) + '</p>';
+  else h += '<div class="zh-big">' + esc(w.zh) + '</div><div class="row"><button class="say" data-say="' + esc(w.w) + '" aria-label="听发音">' + ico('play') + '</button><span class="tag pos">' + (POSN[w.pos] || '') + '</span></div>';
+  h += '</section>';
+  if (q.kind === 'spell') h += pracSpellView(q, w);
+  else {
+    const idn = q.kind === 'zh2id' || q.kind === 'fill';
+    h += '<div class="qopts">' + q.opts.map(id => {
+      const x = WORDS[id], cls = a ? (id === q.w ? 'right' : (id === a.v ? 'wrong' : '')) : '';
+      return '<button class="qopt ' + cls + '" data-act="pracAns" data-v="' + esc(id) + '"' + (a ? ' disabled' : '') + (idn ? ' lang="id"' : '') + '>' + esc(idn ? x.w : x.zh) + '</button>';
+    }).join('') + '</div>';
+  }
+  if (a) {
+    h += '<section class="card stack"><p class="why">' + (a.ok ? '答对了。' : '答错了，正确答案是：') + '</p>'
+      + '<div class="row">' + sayBtn(w.w) + '<b lang="id" style="font-size:20px">' + esc(w.w) + '</b><span class="ipa-s">' + esc(IPA.of(w.w)) + '</span></div><p class="w-zh" style="font-size:17px">' + esc(w.zh) + '</p>'
+      + '<ol class="exs">' + exItem(e, { bare: true }) + '</ol></section>'
+      + '<div class="s-foot"><button class="btn primary" data-act="pracNext">' + (p.i >= p.qs.length - 1 ? '看结果' : '继续') + '</button></div>';
+  }
+  return h + '</div>';
+}
+
 /* ---------- 发音 ---------- */
 function letterDetail() {
   const L = ALPHABET[UI.letter];
@@ -1321,7 +1528,7 @@ function heatSVG(weeks, ahead) {
   return s + '</svg>';
 }
 function heatLegend() {
-  return '<div class="heat-legend"><span>少</span>' + [0, 1, 2, 3, 4].map(i => '<i style="background:var(--heat' + i + ')"></i>').join('') + '<span>多</span><span style="margin-left:8px">每格 = 当天新学 + 复习次数</span></div>';
+  return '<div class="heat-legend"><span>少</span>' + [0, 1, 2, 3, 4].map(i => '<i style="background:var(--heat' + i + ')"></i>').join('') + '<span>多</span><span style="margin-left:8px">每格 = 当天新学 + 复习和练习次数</span></div>';
 }
 function learnedDays() { return learnedIds().map(id => S.words[id][5]).filter(x => typeof x === 'number').sort((a, b) => a - b); }
 function monoPath(P) {
@@ -1428,13 +1635,13 @@ function vStats() {
     + '<div class="tiles"><div class="tile"><span>已学词汇</span><b class="num">' + learned.length + '</b><small>共 ' + WLIST.length + ' 个</small></div>'
     + '<div class="tile"><span>已掌握</span><b class="num">' + mastered + '</b><small>复习间隔 30 天以上</small></div>'
     + '<div class="tile"><span>连续天数</span><b class="num">' + s.cur + '</b><small>最长 ' + s.best + ' 天</small></div>'
-    + '<div class="tile"><span>今天</span><b class="num">' + ((L.n || 0) + (L.r || 0)) + '</b><small>新学 ' + (L.n || 0) + ' · 复习 ' + (L.r || 0) + '</small></div></div>';
+    + '<div class="tile"><span>今天</span><b class="num">' + ((L.n || 0) + (L.r || 0)) + '</b><small>新学 ' + (L.n || 0) + ' · 复习和练习 ' + (L.r || 0) + '</small></div></div>';
   h += '<section class="card stack"><div class="row"><h2 class="h-sec grow">坚持热力图 <small>最近一年 · 学习 ' + s.total + ' 天' + (mins ? ' · 约 ' + mins + ' 分钟' : '') + '</small></h2></div><div class="chart-scroll">' + heatSVG(53) + '</div>' + heatLegend() + '</section>';
   h += '<section class="card stack"><div class="row wrap-ok"><h2 class="h-sec grow">词汇增长曲线</h2><div class="seg" role="group" aria-label="时间范围">' + [[30, '30 天'], [90, '90 天'], ['all', '全部']].map(r => '<button data-act="range" data-v="' + r[0] + '" aria-pressed="' + (String(UI.range) === String(r[0])) + '">' + r[1] + '</button>').join('') + '</div></div><div data-chart="growth"></div></section>';
-  h += '<section class="card stack"><h2 class="h-sec">每日学习量 <small>最近 14 天</small></h2><div class="legend"><span><i style="background:var(--s-new)"></i>新学</span><span><i style="background:var(--s-rev)"></i>复习</span></div><div data-chart="cols"></div></section>';
+  h += '<section class="card stack"><h2 class="h-sec">每日学习量 <small>最近 14 天</small></h2><div class="legend"><span><i style="background:var(--s-new)"></i>新学</span><span><i style="background:var(--s-rev)"></i>复习和练习</span></div><div data-chart="cols"></div></section>';
   h += '<section class="card stack"><h2 class="h-sec">各课进度</h2><div class="tprog">' + TOPICS.map(t => { const x = topicStats(t); return '<a href="#t-' + t.id + '" style="color:inherit;text-decoration:none">' + esc(t.zh) + '</a><span class="bar"><i style="width:' + f1(x.l / x.n * 100) + '%"></i></span><span class="num">' + x.l + '/' + x.n + '</span>'; }).join('') + '</div></section>';
   const rows = Object.keys(S.log).filter(k => { const x = S.log[k]; return (x.n || 0) + (x.r || 0) > 0; }).sort().reverse().slice(0, 60);
-  h += '<section class="card"><details class="more"><summary>每日明细（表格）</summary>' + (rows.length ? '<div style="overflow-x:auto;margin-top:8px"><table class="dtable num"><thead><tr><th>日期</th><th>新学</th><th>复习</th><th>分钟</th></tr></thead><tbody>' + rows.map(k => { const x = S.log[k]; return '<tr><td>' + fmtDay(kidx(k)) + '</td><td>' + (x.n || 0) + '</td><td>' + (x.r || 0) + '</td><td>' + Math.round((x.s || 0) / 60) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted" style="margin-top:8px">还没有记录。</p>') + '</details></section>';
+  h += '<section class="card"><details class="more"><summary>每日明细（表格）</summary>' + (rows.length ? '<div style="overflow-x:auto;margin-top:8px"><table class="dtable num"><thead><tr><th>日期</th><th>新学</th><th>复习和练习</th><th>分钟</th></tr></thead><tbody>' + rows.map(k => { const x = S.log[k]; return '<tr><td>' + fmtDay(kidx(k)) + '</td><td>' + (x.n || 0) + '</td><td>' + (x.r || 0) + '</td><td>' + Math.round((x.s || 0) / 60) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted" style="margin-top:8px">还没有记录。</p>') + '</details></section>';
   return h + '</div>';
 }
 
@@ -1521,13 +1728,14 @@ function refreshWordViews(id) {
   if (UI.sheetWord === id) { const p = $('.sheet-panel'); const top = p ? p.scrollTop : 0; openWord(id); const p2 = $('.sheet-panel'); if (p2) p2.scrollTop = top; }
   else if (UI.route.name === 'study') { const y = window.scrollY; render(); window.scrollTo(0, y); }
 }
-const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef };
+const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice };
 function parseHash() {
   let h = location.hash.slice(1);
   try { h = decodeURIComponent(h); } catch (e) { /* 忽略 */ }
   if (h.indexOf('t-') === 0 && TOPIC_BY[h.slice(2)]) return { name: 'topic', arg: h.slice(2) };
   if (h === 'study') return UI.sess ? { name: 'study' } : { name: 'home' };
   if (h.indexOf('ref-') === 0) return { name: 'ref', arg: h.slice(4) };
+  if (h === 'practice') return UI.prac ? { name: 'practice' } : { name: 'review' };
   if (h && VIEWS[h] && h !== 'topic') return { name: h };
   return { name: 'home' };
 }
@@ -1560,7 +1768,7 @@ function render() {
   if (TTS.cur) markPlaying(TTS.cur.key, true);
 }
 function updateNav() {
-  const cur = ['topic', 'study', 'ref'].includes(UI.route.name) ? 'learn' : UI.route.name;
+  const cur = ['topic', 'study', 'ref'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' ? 'review' : UI.route.name;
   $$('#nav a[data-nav]').forEach(a => { if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const b = $('#due-badge'), n = dueIds().length;
   if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n); }
@@ -1600,7 +1808,7 @@ function onChartPointer(e) {
   if (!(el instanceof Element)) return hideTT();
   if (el.tagName === 'rect' && el.dataset.d) {
     const d = +el.dataset.d, L = S.log[dkey(d)] || {};
-    return showTT('<b>' + ((L.n || 0) + (L.r || 0)) + ' 次学习</b>' + fmtDay(d) + '<br>新学 ' + (L.n || 0) + ' · 复习 ' + (L.r || 0), e);
+    return showTT('<b>' + ((L.n || 0) + (L.r || 0)) + ' 次学习</b>' + fmtDay(d) + '<br>新学 ' + (L.n || 0) + ' · 复习和练习 ' + (L.r || 0), e);
   }
   if (el.dataset.col != null && CMETA) {
     const i = +el.dataset.col, v = CMETA.data[i];
@@ -1710,7 +1918,16 @@ const ACT = {
   revMissed: b => { UI.rev = null; startReview(String(b.dataset.ids || '').split('|'), true, '再过一遍不认识的'); },
   rqans: b => revQuizAnswer(b.dataset.v),
   rqnext: () => revQuizNext(),
-  revFree: () => startReview(shuffle(learnedIds()).slice(0, 10), true, '随机练习'),
+  pracStart: b => startPractice(b.dataset.m),
+  pracRetry: b => startPractice(UI.prac && UI.prac.mode !== 'mock' ? UI.prac.mode : 'mix', String(b.dataset.ids || '').split('|')),
+  pracAns: b => pracAnswer(b.dataset.v),
+  pracNext: () => pracNext(),
+  pracPrev: () => { const p = UI.prac; if (p && !p.done && p.i > 0) { p.i--; p.flip = false; TTS.stop(); render(); pracSay(); } },
+  pracFlip: () => { const p = UI.prac; if (p && !p.done) { p.flip = !p.flip; render(); if (!p.flip) pracSay(); } },
+  pracTile: b => pracTile(+b.dataset.k),
+  pracBack: () => pracBack(),
+  pracExit: () => { const p = UI.prac; if (p) clearInterval(p.timer); UI.prac = null; TTS.stop(); go('review'); const el = $('#prac-hub'); if (el) el.scrollIntoView(); },
+  pracHub: () => { UI.rev = null; go('review'); const el = $('#prac-hub'); if (el) el.scrollIntoView(); },
   revExit: () => { UI.rev = null; TTS.stop(); render(); window.scrollTo(0, 0); },
   reveal: () => { const rv = UI.rev; if (rv && !rv.quiz && !rv.shown && rv.i < rv.queue.length) { rv.shown = true; render(); autoSay(WORDS[rv.queue[rv.i]].w); } },   // 揭示答案时自动朗读
   grade: b => doGrade(+b.dataset.v),
@@ -1784,12 +2001,24 @@ function onChange(e) {
   const t = e.target;
   if (t.id === 'voice') { DEV.voice = t.value; saveDev(); const v = TTS.voice(); TTS.play('Halo, apa kabar?', 'voice-test', { noLoop: true, voice: v, tts: true }); }
   else if (t.id === 'autoplay') { DEV.autoplay = t.checked; saveDev(); }
+  else if (t.id === 'pscope') { UI.pscope = t.value; const y = window.scrollY; render(); window.scrollTo(0, y); }
 }
 function onKey(e) {
   if (e.key === 'Escape') { closeSheet(); return; }
   const tag = (e.target && e.target.tagName) || '';
   if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (UI.route.name === 'review' && UI.rev && UI.rev.quiz && $('#sheet').hidden) {
+  if (UI.route.name === 'practice' && UI.prac && !UI.prac.done && $('#sheet').hidden) {
+    const p = UI.prac, q = p.qs[p.i];
+    if (p.mode === 'cards') {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); ACT.pracFlip(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); pracNext(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); ACT.pracPrev(); }
+    } else if (q.ans) { if (e.key === 'Enter') { e.preventDefault(); pracNext(); } }
+    else if (q.kind === 'spell') {
+      if (e.key === 'Backspace') { e.preventDefault(); pracBack(); }
+      else if (/^[a-z]$/i.test(e.key)) { const k = q.tiles.findIndex((c, i) => c === e.key.toLowerCase() && !q.typed.includes(i)); if (k >= 0) { e.preventDefault(); pracTile(k); } }
+    } else if (/^[1-4]$/.test(e.key)) { const ob = $$('.qopt')[+e.key - 1]; if (ob) { e.preventDefault(); pracAnswer(ob.dataset.v); } }
+  } else if (UI.route.name === 'review' && UI.rev && UI.rev.quiz && $('#sheet').hidden) {
     const q = UI.rev.quiz;
     if (q.ans && e.key === 'Enter') { e.preventDefault(); revQuizNext(); }
     else if (!q.ans && /^[1-4]$/.test(e.key)) { const ob = $$('.qopt')[+e.key - 1]; if (ob) { e.preventDefault(); revQuizAnswer(ob.dataset.v); } }
