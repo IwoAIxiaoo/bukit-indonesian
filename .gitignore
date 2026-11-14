@@ -1,0 +1,8 @@
+# 构建产物：用 node build.mjs 生成，离线版在 Releases 里提供
+bukit.html
+bukit-offline.html
+
+node_modules/
+tools/shots/
+__pycache__/
+.DS_Store

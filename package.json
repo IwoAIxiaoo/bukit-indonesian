@@ -1,0 +1,15 @@
+{
+  "name": "bukit-indonesian",
+  "version": "1.0.0",
+  "private": true,
+  "description": "用中文学印尼语的网页应用，可离线使用",
+  "license": "SEE LICENSE IN README.md",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "python3 tools/serve.py",
+    "test": "node tools/test-offline.js && node tools/test-recall.js && node tools/test-ref.js && node tools/test-variants.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
