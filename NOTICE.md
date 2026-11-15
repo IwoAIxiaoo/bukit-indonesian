@@ -30,6 +30,10 @@ MSWC 是从 **Mozilla Common Voice** 志愿者朗读的句子中，用强制对�
 
 字体文件取自 [Fontsource](https://fontsource.org/)。
 
+## 参考过的做法
+
+“今日学习”把复习、新词、默写串成一次，以及错词本、跟打、听写这几种练习形式，参考了开源项目 [TypeWords](https://github.com/zyronon/TypeWords)（GPL-3.0）的功能思路。本仓库**没有使用、也没有改写它的任何代码或素材**，这些功能都是另行实现的。
+
 ## 只在制作过程中用到、仓库里不包含的东西
 
 - **Whisper large-v3-turbo**（通过 faster-whisper）：用来检查合成语音和真人录音能否被正确识别，从而筛选音频。

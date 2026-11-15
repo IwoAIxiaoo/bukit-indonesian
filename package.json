@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "python3 tools/serve.py",
-    "test": "node tools/test-offline.js && node tools/test-recall.js && node tools/test-ref.js && node tools/test-variants.js && node tools/test-practice.js"
+    "test": "node tools/test-offline.js && node tools/test-recall.js && node tools/test-ref.js && node tools/test-variants.js && node tools/test-practice.js && node tools/test-flow.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,4 +1,4 @@
-// 自由练习（七种训练模式）测试。默认测离线版；测在线版：node tools/test-practice.js http://127.0.0.1:8765/bukit.html
+// 自由练习测试（选择、拼写、填空、模拟；跟打和听写在 test-flow.js 里）。默认测离线版；测在线版：node tools/test-practice.js http://127.0.0.1:8765/bukit.html
 const { chromium } = require('playwright');
 const URL0 = process.argv[2] || 'file://' + require('path').join(__dirname, '..', 'bukit-offline.html');
 const OFF = process.argv[3] === 'offline' || URL0.startsWith('file:');
@@ -37,7 +37,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   check('home has the practice entry', !!(await p.$('[data-act="pracHub"]')));
   await p.click('[data-act="pracHub"]'); await p.waitForSelector('#prac-hub'); await p.waitForTimeout(300);
   const hub = await p.evaluate(() => ({ modes: [...document.querySelectorAll('.pmode b')].map(x => x.textContent), opts: document.querySelectorAll('#pscope option').length, sel: document.querySelector('#pscope').value, xp: /XP|经验值|等级/.test(document.querySelector('#main').innerText) }));
-  check('hub: 7 modes, scope list (learned + all + 31 lessons), no XP or levels', hub.modes.length === 7 && hub.opts === 33 && hub.sel === 'learned' && !hub.xp, hub.modes.join(' / '));
+  check('hub: 9 modes, scope list (learned + error book + favourites + all + 31 lessons), no XP or levels', hub.modes.length === 9 && hub.opts === 35 && hub.sel === 'learned' && !hub.xp, hub.modes.join(' / '));
   await p.locator('#prac-hub').screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-prac-hub.png' });
 
   // 读出当前题目的正确答案（按题型）
