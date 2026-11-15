@@ -71,6 +71,8 @@ const IC = {
   loop: '<path d="M17 3l3 3-3 3"/><path d="M4 11V9.5A3.5 3.5 0 0 1 7.5 6H20"/><path d="M7 21l-3-3 3-3"/><path d="M20 13v1.5a3.5 3.5 0 0 1-3.5 3.5H4"/>',
   slow: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2"/><path d="M10 2.5h4"/>',
   spark: '<path d="M12 3.5l1.7 4.6 4.6 1.7-4.6 1.7L12 16.1l-1.7-4.6L5.7 9.8l4.6-1.7z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  pause: '<path d="M8.5 5v14"/><path d="M15.5 5v14"/>',
+  go: '<path d="M7.5 4.5v15l12-7.5z"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
   next: '<path d="m9 18 6-6-6-6"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
@@ -923,7 +925,7 @@ function vHome() {
     const nd = learnedIds().map(id => S.words[id][1]).sort((a, b) => a - b)[0];
     h += '<section class="card action"><div class="goal-ring">' + ringSVG(wait ? 0 : 1) + '<span>' + (wait ? '<span class="num">' + wait + '</span>' : ico('check')) + '</span></div><div class="grow"><p class="eyebrow">今日复习</p><h3>' + (wait ? wait + ' 个词等 10 分钟后再考' : '现在没有到期的词') + '</h3><p class="sub">' + (wait ? '刚才选了“不认识”的词，过一会儿回来再考一次。' : '下一批在' + (nd - t <= 1 ? '明天' : ' ' + fmtDay(nd)) + '。') + (soon ? ' 有 ' + soon + ' 个快到期或没记牢的词可以提前复习。' : '') + '</p></div>' + (soon || wait ? '<a class="btn" href="#review">去看看</a>' : '') + '</section>';
   }
-  h += '<section class="card action"><div class="grow"><p class="eyebrow">自由练习</p><h3>九种训练模式</h3><p class="sub">单词卡、选义、选词、听音、拼写、跟打、听写、填空、限时模拟。</p></div><button class="btn" data-act="pracHub">去练习</button></section>';
+  h += '<section class="card action"><div class="grow"><p class="eyebrow">自由练习</p><h3>练单词，也练句子</h3><p class="sub">九种单词练习（选义、拼写、跟打、听写、限时模拟……），加上句子连播、影子跟读和组句。</p></div><button class="btn" data-act="pracHub">去练习</button></section>';
   const ts = todaySentence();
   if (next) Clips.pack(next.id);
   if (ts) {
@@ -1337,6 +1339,9 @@ function pracHub() {
     + '<div class="set"><label for="pscope">练哪些词</label><select id="pscope">' + opts + '</select></div>'
     + (n ? '<div class="pmodes">' + PMODES.map(m => '<button class="pmode" data-act="pracStart" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div>'
       + '<p class="hint">先用单词卡熟悉，再用拼写和填空巩固，最后用模拟挑战检验。练习不改变复习计划，答错的词下次复习会排在前面。</p>'
+      + '<p class="eyebrow" style="margin-top:6px">句子与语感 · 用这些词的例句</p>'
+      + '<div class="pmodes" id="sen-modes">' + SMODES.map(m => '<button class="pmode smode" data-act="senStart" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div>'
+      + '<p class="hint">连续播放和影子跟读用来磨耳朵、练语调；连词成句和听音组句练语序。</p>'
       : '<p class="sub">' + (sc.v === 'weak' ? '错词本是空的。' : sc.v === 'fav' ? '还没有收藏的词，在单词卡上点“收藏”。' : '还没有学过的词。先去课程里学几个，') + '可以在上面换成“全部课程”或某一课。</p>')
     + '</section>';
 }
@@ -1521,6 +1526,235 @@ function vPractice() {
       + '<div class="row">' + sayBtn(w.w) + '<b lang="id" style="font-size:20px">' + esc(w.w) + '</b><span class="ipa-s">' + esc(IPA.of(w.w)) + '</span></div><p class="w-zh" style="font-size:17px">' + esc(w.zh) + '</p>'
       + '<ol class="exs">' + exItem(e, { bare: true }) + '</ol></section>'
       + '<div class="s-foot"><button class="btn primary" data-act="pracNext">' + (p.i >= p.qs.length - 1 ? '看结果' : '继续') + '</button></div>';
+  }
+  return h + '</div>';
+}
+
+/* ---------- 句子与语感：连续播放、影子跟读、连词成句、听音组句 ---------- */
+// 句子条目：{ id: 印尼语（可以带 [ ] 标记）, zh: 中文, wid: 来自哪个词（可以没有） }。默认取练习范围里那些词的例句，
+// 也可以由调用方直接给一组句子（短文阅读用）。
+const SMODES = [
+  ['play', '播', '连续播放', '一句接一句自动播'],
+  ['shadow', '读', '影子跟读', '听一句，跟着说一句'],
+  ['order', '排', '连词成句', '看中文，排出印尼语'],
+  ['hear', '组', '听音组句', '只听句子，排出原句']
+];
+const SMODE = {}; SMODES.forEach(m => { SMODE[m[0]] = m; });
+const SEN_PLAY_N = 12, SEN_Q_N = 8;
+const senQuiz = m => m === 'order' || m === 'hear';
+// 把句子拆成词块：按空格分，去掉词两头的标点
+const senTokens = s => plain(s).split(/\s+/).map(t => t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, '')).filter(Boolean);
+// 句首的词如果平时是小写的（在别的句子中间以小写出现过），词块上也用小写，免得大写字母泄露顺序；专有名词保持原样
+let SEN_LOW = null;
+function senTiles(s) {
+  if (!SEN_LOW) {
+    SEN_LOW = new Set();
+    WLIST.forEach(w => {
+      senTokens(w.w).forEach(t => { if (t === t.toLowerCase()) SEN_LOW.add(t); });   // 词条本身是小写的
+      w.ex.forEach(e => senTokens(e.id).slice(1).forEach(t => { if (t === t.toLowerCase()) SEN_LOW.add(t); }));
+    });
+  }
+  const t = senTokens(s);
+  if (t.length && SEN_LOW.has(t[0].toLowerCase())) t[0] = t[0].toLowerCase();
+  return t;
+}
+function senPool() { const out = []; pracScope().words.forEach(w => w.ex.forEach(e => out.push({ id: e.id, zh: e.zh, wid: w.id }))); return out; }
+const senReps = () => { const n = +DEV.senReps || 1; return n >= 1 && n <= 3 ? n : 1; };
+function senQuestion(x, pool, mode) {
+  const ans = senTiles(x.id);
+  let tiles = ans.slice();
+  if (mode === 'hear') {
+    // 混进 2 个别的句子里的词
+    const low = ans.map(t => t.toLowerCase()), extra = [];
+    shuffle(pool).some(y => {
+      const t = shuffle(senTiles(y.id)).find(t => t.length > 1 && !low.includes(t.toLowerCase()) && !extra.some(e => e.toLowerCase() === t.toLowerCase()));
+      if (t) extra.push(t);
+      return extra.length >= 2;
+    });
+    tiles = tiles.concat(extra);
+  }
+  let sh = shuffle(tiles);
+  for (let k = 0; k < 6 && sh.slice(0, ans.length).join(' ') === ans.join(' '); k++) sh = shuffle(tiles);   // 别碰巧就是原来的顺序
+  return { x, ans, tiles: sh, pick: [], res: null };
+}
+function startSense(mode, items, label, o) {
+  o = o || {};
+  if (!SMODE[mode]) return;
+  if (mode !== 'order' && !canSpeak()) { toast('这个浏览器不能播放声音'); return; }
+  const quiz = senQuiz(mode);
+  let pool = items || senPool();
+  if (quiz) pool = pool.filter(x => { const n = senTokens(x.id).length; return n >= 3 && n <= 10; });
+  if (!pool.length) { toast('这个范围里没有合适的句子'); return; }
+  let list;
+  if (o.keepOrder) list = pool.slice(0, quiz ? 12 : 60);
+  else {
+    // 同一个词只取一句，免得两句太像
+    const seen = {};
+    list = shuffle(pool).filter(x => { if (!x.wid) return true; if (seen[x.wid]) return false; seen[x.wid] = 1; return true; }).slice(0, quiz ? SEN_Q_N : SEN_PLAY_N);
+  }
+  const s = { mode, label: label || pracScope().label, items: list, i: 0, done: false, back: o.back || '', src: items ? { items, label, o } : null };
+  if (quiz) { s.right = 0; s.wrong = []; s.qs = list.map(x => senQuestion(x, pool, mode)); }
+  else { s.playing = true; s.rep = 0; s.phase = ''; s.t0 = 0; s.until = 0; s.gap = 0; s.key = ''; s.heard = 0; }
+  UI.sen = s;
+  Clips.prefetch(list.slice(0, 6).map(x => x.id));
+  go('sense');
+  window.scrollTo(0, 0);
+  if (quiz) senAsk(); else senPlayCur();
+}
+/* 连续播放、影子跟读：用 TTS.play 一句一句播，定时看这一句播完没有，再排下一句 */
+let senTimerId = 0;
+function senPlayCur() {
+  const s = UI.sen;
+  if (!s || s.done || senQuiz(s.mode) || !s.playing) return;
+  const t = plain(s.items[s.i].id);
+  TTS.stop();
+  s.key = t; s.phase = 'say'; s.t0 = Date.now();
+  TTS.play(t, t, { noLoop: true });
+  clearInterval(senTimerId);
+  senTimerId = setInterval(senTick, 120);
+  if (UI.route.name === 'sense') render();
+}
+function senPause() {
+  const s = UI.sen;
+  if (!s || senQuiz(s.mode)) return;
+  s.playing = false; s.phase = '';
+  clearInterval(senTimerId);
+  if (UI.route.name === 'sense') render();
+}
+function senTick() {
+  const s = UI.sen;
+  if (!s || s.done || senQuiz(s.mode) || !s.playing || UI.route.name !== 'sense') { clearInterval(senTimerId); return; }
+  const now = Date.now();
+  if (s.phase === 'say') {
+    if (TTS.cur && TTS.cur.key === s.key) return;     // 这一句还在播
+    if (TTS.cur) { senPause(); return; }               // 用户点了别的发音：停下来，等他按继续
+    const dur = now - s.t0;
+    if (dur < 350) { senPause(); return; }             // 没播出来（比如浏览器拦截了自动播放）：停下来，不空转
+    // 跟读的空档和这一句差不多长，略多一点
+    s.phase = 'gap'; s.gap = s.mode === 'shadow' ? Math.max(1800, Math.round(dur * 1.15)) : 650; s.until = now + s.gap;
+    render();
+  } else if (s.phase === 'gap' && now >= s.until) {
+    s.rep++;
+    if (s.rep < senReps()) { senPlayCur(); return; }
+    if (s.mode === 'shadow') bump('r');
+    s.heard = Math.max(s.heard, s.i + 1);
+    if (s.i >= s.items.length - 1) { s.done = true; s.playing = false; clearInterval(senTimerId); render(); window.scrollTo(0, 0); return; }
+    s.i++; s.rep = 0;
+    Clips.prefetch([s.items[Math.min(s.i + 1, s.items.length - 1)].id]);
+    senPlayCur();
+  }
+}
+function senMove(d) {
+  const s = UI.sen;
+  if (!s || s.done || senQuiz(s.mode)) return;
+  const i = Math.max(0, Math.min(s.items.length - 1, s.i + d));
+  if (i === s.i && d) return;
+  s.i = i; s.rep = 0;
+  if (s.playing) senPlayCur(); else { TTS.stop(); render(); }
+}
+function senToggle() {
+  const s = UI.sen;
+  if (!s || s.done || senQuiz(s.mode)) return;
+  if (s.playing) { TTS.stop(); senPause(); } else { s.playing = true; s.rep = 0; senPlayCur(); }
+}
+/* 连词成句、听音组句 */
+function senAsk() {
+  const s = UI.sen;
+  if (!s || s.done || s.mode !== 'hear') return;
+  const t = plain(s.qs[s.i].x.id);
+  TTS.play(t, t, { noLoop: true });
+}
+function senPick(k) {
+  const s = UI.sen, q = s && !s.done && s.qs && s.qs[s.i];
+  if (!q || q.res || q.pick.includes(k) || !(k >= 0 && k < q.tiles.length)) return;
+  q.pick.push(k); render();
+}
+function senUnpick(pos) {
+  const s = UI.sen, q = s && !s.done && s.qs && s.qs[s.i];
+  if (!q || q.res || !q.pick.length) return;
+  if (pos == null) q.pick.pop(); else q.pick.splice(pos, 1);
+  render();
+}
+function senCheck() {
+  const s = UI.sen, q = s && !s.done && s.qs && s.qs[s.i];
+  if (!q || q.res || !q.pick.length) return;
+  const low = a => a.map(t => t.toLowerCase()).join(' ');
+  const ok = low(q.pick.map(k => q.tiles[k])) === low(q.ans);
+  q.res = { ok };
+  if (ok) s.right++; else s.wrong.push(s.i);
+  bump('r');
+  render();
+  if (!ok) { const box = $('.sline'); if (box) box.classList.add('shake'); }
+  const t = plain(q.x.id);
+  if (canSpeak() && (DEV.autoplay || s.mode === 'hear')) { TTS.stop(); TTS.play(t, t, { noLoop: true }); }
+}
+function senNextQ() {
+  const s = UI.sen;
+  if (!s || s.done || !s.qs || !s.qs[s.i].res) return;
+  TTS.stop();
+  if (s.i >= s.qs.length - 1) { s.done = true; render(); window.scrollTo(0, 0); return; }
+  s.i++;
+  Clips.prefetch([s.items[s.i].id]);
+  render(); window.scrollTo(0, 0);
+  senAsk();
+}
+function senExit() {
+  const s = UI.sen;
+  clearInterval(senTimerId);
+  UI.sen = null; TTS.stop();
+  if (s && s.back) { go(s.back); return; }
+  go('review'); const el = $('#prac-hub'); if (el) el.scrollIntoView();
+}
+function senDone(s) {
+  const m = SMODE[s.mode], n = s.items.length;
+  let h = '<div class="page wrap"><section class="card stack"><p class="eyebrow">' + m[2] + ' · ' + esc(s.label) + '</p>';
+  if (!senQuiz(s.mode)) h += '<h2 class="h-sec">' + (s.mode === 'shadow' ? '跟读了 ' : '听完了 ') + n + ' 句</h2><p class="sub">' + (s.mode === 'shadow' ? '想再练就换成“隐藏印尼语”，只靠耳朵跟。' : '听熟了可以试试影子跟读，或者用听音组句检验。') + '</p>';
+  else {
+    h += '<h2 class="h-sec">答对 ' + s.right + ' / ' + n + '</h2>';
+    if (s.wrong.length) h += '<p class="sub">这几句没排对，可以再听一听：</p><ol class="exs">' + s.wrong.map(i => exItem(s.items[i], { bare: true })).join('') + '</ol>';
+    else h += '<p class="sub">全部排对。</p>';
+  }
+  return h + '</section><div class="stack"><button class="btn primary block" data-act="senAgain">再来一组</button><button class="btn block" data-act="senExit">' + (s.back ? '回到短文' : '换一种练习') + '</button></div></div>';
+}
+function vSense() {
+  const s = UI.sen;
+  if (!s) return vReview();
+  if (s.done) return senDone(s);
+  const m = SMODE[s.mode], x = s.items[s.i], n = s.items.length, t = plain(x.id);
+  let h = '<div class="session wrap"><div class="s-head"><button class="icon-btn" data-act="senExit" aria-label="结束">' + ico('close') + '</button><div class="bar"><i style="width:' + f1(s.i / n * 100) + '%"></i></div><span class="s-count num">' + (s.i + 1) + '/' + n + '</span></div>'
+    + '<p class="eyebrow">' + m[2] + ' · ' + esc(s.label) + '</p>';
+  if (!senQuiz(s.mode)) {
+    const showId = DEV.senId !== false, showZh = DEV.senZh !== false, reps = senReps();
+    let st;
+    if (!s.playing) st = '已暂停';
+    else if (s.phase === 'gap' && s.mode === 'shadow') st = '轮到你了，跟着说一遍<span class="sen-gap" aria-hidden="true"><i style="animation-duration:' + s.gap + 'ms"></i></span>';
+    else st = '正在播放' + (reps > 1 ? ' · 第 ' + Math.min(s.rep + 1, reps) + ' / ' + reps + ' 遍' : '');
+    h += '<section class="card sen-card' + (s.playing && s.phase === 'gap' && s.mode === 'shadow' ? ' turn' : '') + '">'
+      + (showId ? '<p class="sen-id" lang="id">' + hl(x.id) + '</p>' : '<p class="sen-hidden">印尼语文字已隐藏，先用耳朵听</p>')
+      + (showZh ? '<p class="sen-zh">' + esc(x.zh) + '</p>' : '')
+      + '<p class="sen-st" id="sen-st">' + st + '</p></section>'
+      + '<div class="sen-ctl"><button class="icon-btn" data-act="senPrev" aria-label="上一句"' + (s.i ? '' : ' disabled') + '>' + ico('back') + '</button>'
+      + '<button class="sen-main" data-act="senToggle" aria-label="' + (s.playing ? '暂停' : '继续播放') + '">' + ico(s.playing ? 'pause' : 'go') + '</button>'
+      + '<button class="icon-btn" data-act="senSkip" aria-label="下一句"' + (s.i < n - 1 ? '' : ' disabled') + '>' + ico('next') + '</button></div>'
+      + '<div class="sen-opts"><div class="chips" role="group" aria-label="每句重复几遍"><span class="lbl">每句</span>' + [1, 2, 3].map(k => '<button class="chip" data-act="senSet" data-k="senReps" data-v="' + k + '" aria-pressed="' + (reps === k) + '">' + k + ' 遍</button>').join('') + '</div>'
+      + '<div class="chips"><button class="chip" data-act="senSet" data-k="senId" aria-pressed="' + showId + '">印尼语文字</button><button class="chip" data-act="senSet" data-k="senZh" aria-pressed="' + showZh + '">中文</button></div></div>'
+      + '<p class="hint">' + (s.mode === 'shadow' ? '每句播完会留出差不多长的空档，跟着大声说出来，尽量模仿语调和停顿。熟了就把印尼语文字关掉。' : '放着听就行。顶上的“慢速”对这里也有效。') + '</p>';
+    return h + '</div>';
+  }
+  const q = s.qs[s.i], r = q.res;
+  h += '<section class="card qprompt">';
+  if (s.mode === 'order') h += '<div class="zh-big sen-q">' + esc(x.zh) + '</div><p class="qkind">把下面的词按顺序排成这句话</p>';
+  else h += '<button class="say bigplay" data-say="' + esc(t) + '" aria-label="再听一遍">' + ico('play') + '</button><p class="qkind">听句子，把听到的词按顺序点出来（有 2 个是多余的）</p>';
+  h += '</section><div class="sline' + (r ? (r.ok ? ' right' : ' wrong') : '') + '" lang="id" aria-label="你排出的句子">'
+    + (q.pick.length ? q.pick.map((k, pos) => '<button class="stile" data-act="senUnpick" data-k="' + pos + '"' + (r ? ' disabled' : '') + '>' + esc(q.tiles[k]) + '</button>').join('') : '<span class="sen-ph">点下面的词，按顺序排出句子</span>') + '</div>';
+  if (!r) {
+    h += '<div class="ptiles stiles">' + q.tiles.map((w, k) => '<button class="ptile wd" data-act="senPick" data-k="' + k + '"' + (q.pick.includes(k) ? ' disabled' : '') + ' lang="id">' + esc(w) + '</button>').join('') + '</div>'
+      + '<div class="s-foot"><button class="btn" data-act="senBack"' + (q.pick.length ? '' : ' disabled') + '>退格</button><button class="btn primary" data-act="senCheck"' + (q.pick.length ? '' : ' disabled') + '>确定</button></div>';
+  } else {
+    h += '<section class="card stack"><p class="why">' + (r.ok ? '排对了。' : s.mode === 'hear' ? '不对，原句是：' : '和例句不一样。例句是：') + '</p>'
+      + '<div class="row" style="align-items:flex-start">' + sayBtn(x.id) + '<div class="grow"><p class="ex-id" lang="id">' + hl(x.id) + '</p><p class="ex-zh">' + esc(x.zh) + '</p></div></div>'
+      + (!r.ok && s.mode === 'order' ? '<p class="hint">印尼语里有些词（比如时间、地点）的位置可以换，和例句不同不一定就是错的。</p>' : '') + '</section>'
+      + '<div class="s-foot"><button class="btn primary" data-act="senNext">' + (s.i >= n - 1 ? '看结果' : '继续') + '</button></div>';
   }
   return h + '</div>';
 }
@@ -1827,7 +2061,7 @@ function refreshWordViews(id) {
   if (UI.sheetWord === id) { const p = $('.sheet-panel'); const top = p ? p.scrollTop : 0; openWord(id); const p2 = $('.sheet-panel'); if (p2) p2.scrollTop = top; }
   else if (UI.route.name === 'study') { const y = window.scrollY; render(); window.scrollTo(0, y); }
 }
-const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice };
+const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice, sense: vSense };
 function parseHash() {
   let h = location.hash.slice(1);
   try { h = decodeURIComponent(h); } catch (e) { /* 忽略 */ }
@@ -1835,6 +2069,7 @@ function parseHash() {
   if (h === 'study') return UI.sess ? { name: 'study' } : { name: 'home' };
   if (h.indexOf('ref-') === 0) return { name: 'ref', arg: h.slice(4) };
   if (h === 'practice') return UI.prac ? { name: 'practice' } : { name: 'review' };
+  if (h === 'sense') return UI.sen ? { name: 'sense' } : { name: 'review' };
   if (h && VIEWS[h] && h !== 'topic') return { name: h };
   return { name: 'home' };
 }
@@ -1852,6 +2087,7 @@ function route() {
   UI.route = parseHash();
   closeSheetSilently();
   if (prev !== UI.route.name || UI.route.name === 'topic') TTS.stop();
+  if (prev === 'sense' && UI.route.name !== 'sense' && UI.sen && UI.sen.playing) { UI.sen.playing = false; UI.sen.phase = ''; clearInterval(senTimerId); }   // 离开页面就暂停连播
   render();
   window.scrollTo(0, 0);
   const m = $('#main');
@@ -1867,7 +2103,7 @@ function render() {
   if (TTS.cur) markPlaying(TTS.cur.key, true);
 }
 function updateNav() {
-  const cur = ['topic', 'study', 'ref'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' ? 'review' : UI.route.name;
+  const cur = ['topic', 'study', 'ref'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' || UI.route.name === 'sense' ? 'review' : UI.route.name;
   $$('#nav a[data-nav]').forEach(a => { if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const b = $('#due-badge'), n = dueIds().length;
   if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n); }
@@ -2041,6 +2277,22 @@ const ACT = {
   },
   flowQuit: () => { UI.flow = null; render(); },
   pracScopeSet: b => { UI.pscope = b.dataset.v; render(); const el = $('#prac-hub'); if (el) el.scrollIntoView(); },
+  senStart: b => startSense(b.dataset.m),
+  senAgain: () => { const s = UI.sen; if (s) startSense(s.mode, s.src ? s.src.items : null, s.src ? s.src.label : null, s.src ? s.src.o : null); },
+  senExit: () => senExit(),
+  senToggle: () => senToggle(),
+  senPrev: () => senMove(-1),
+  senSkip: () => senMove(1),
+  senSet: b => {
+    const k = b.dataset.k;
+    if (k === 'senReps') DEV.senReps = +b.dataset.v; else if (k === 'senId' || k === 'senZh') DEV[k] = DEV[k] === false;
+    saveDev(); render();
+  },
+  senPick: b => senPick(+b.dataset.k),
+  senUnpick: b => senUnpick(+b.dataset.k),
+  senBack: () => senUnpick(null),
+  senCheck: () => senCheck(),
+  senNext: () => senNextQ(),
   pracStart: b => startPractice(b.dataset.m),
   pracRetry: b => startPractice(UI.prac && UI.prac.mode !== 'mock' ? UI.prac.mode : 'mix', String(b.dataset.ids || '').split('|')),
   pracAns: b => pracAnswer(b.dataset.v),
@@ -2147,6 +2399,14 @@ function onKey(e) {
       if (e.key === 'Backspace') { e.preventDefault(); pracBack(); }
       else if (/^[a-z]$/i.test(e.key)) { const k = q.tiles.findIndex((c, i) => c === e.key.toLowerCase() && !q.typed.includes(i)); if (k >= 0) { e.preventDefault(); pracTile(k); } }
     } else if (/^[1-4]$/.test(e.key)) { const ob = $$('.qopt')[+e.key - 1]; if (ob) { e.preventDefault(); pracAnswer(ob.dataset.v); } }
+  } else if (UI.route.name === 'sense' && UI.sen && !UI.sen.done && $('#sheet').hidden) {
+    const s = UI.sen;
+    if (!senQuiz(s.mode)) {
+      if (e.key === ' ') { e.preventDefault(); senToggle(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); senMove(1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); senMove(-1); }
+    } else if (e.key === 'Enter') { e.preventDefault(); if (s.qs[s.i].res) senNextQ(); else senCheck(); }
+    else if (e.key === 'Backspace') { e.preventDefault(); senUnpick(null); }
   } else if (UI.route.name === 'review' && UI.rev && UI.rev.quiz && $('#sheet').hidden) {
     const q = UI.rev.quiz;
     if (q.ans && e.key === 'Enter') { e.preventDefault(); revQuizNext(); }

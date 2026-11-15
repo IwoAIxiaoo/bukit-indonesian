@@ -84,7 +84,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
 
   // ---- 复习页：错词本和收藏的列表、练习范围
   await p.goto(URL0 + '#review'); await p.waitForSelector('#prac-hub'); await p.waitForTimeout(300);
-  const lists = await p.evaluate(() => ({ txt: (document.querySelector('#lists-card') || {}).innerText || '', modes: [...document.querySelectorAll('.pmode b')].map(x => x.textContent), opts: [...document.querySelectorAll('#pscope option')].slice(0, 4).map(o => o.textContent) }));
+  const lists = await p.evaluate(() => ({ txt: (document.querySelector('#lists-card') || {}).innerText || '', modes: [...document.querySelectorAll('.pmode:not(.smode) b')].map(x => x.textContent), opts: [...document.querySelectorAll('#pscope option')].slice(0, 4).map(o => o.textContent) }));
   check('review page lists the error book (1) and favourites (1)', /错词本\s*1 个/.test(lists.txt) && lists.txt.includes(seed.w[0]) && /收藏的词\s*1 个/.test(lists.txt) && lists.txt.includes(seed.w[3]), lists.txt.replace(/\s+/g, ' ').slice(0, 140));
   check('practice: nine modes incl. 跟打 and 听写; scope offers 错词本 and 收藏的词', lists.modes.length === 9 && lists.modes.includes('跟打') && lists.modes.includes('听写') && /错词本（1 个）/.test(lists.opts[1]) && /收藏的词（1 个）/.test(lists.opts[2]), lists.modes.join('/') + ' | ' + lists.opts.join(' '));
   await p.locator('#lists-card').screenshot({ path: OUT + tag + '-lists.png' });

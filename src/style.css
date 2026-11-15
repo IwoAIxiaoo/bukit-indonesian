@@ -567,4 +567,33 @@ details.more summary { cursor: pointer; font-weight: 650; color: var(--ink-2); f
 .w-acts .chip { height: 36px; }
 #lists-card details.more + details.more { margin-top: 4px; }
 .action .linkbtn { flex-shrink: 0; color: var(--ink-3); }
+
+/* 句子与语感 */
+.sen-card { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 28px 18px 20px; min-height: 190px; justify-content: center; border: 1.5px solid transparent; }
+.sen-card.turn { border-color: var(--kunyit); }
+.sen-id { font-size: clamp(21px, 5.6vw, 26px); font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.sen-zh { font-size: 15.5px; color: var(--ink-2); line-height: 1.6; }
+.sen-hidden { font-size: 15px; color: var(--ink-3); padding: 14px 0; }
+.sen-st { font-size: 13px; font-weight: 650; color: var(--ink-3); display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 34px; }
+.sen-card.turn .sen-st { color: var(--ink); }
+.sen-gap { display: block; width: 160px; height: 6px; border-radius: 3px; background: var(--sunk); overflow: hidden; }
+.sen-gap > i { display: block; height: 100%; width: 100%; background: var(--kunyit); transform-origin: left; animation: gapfill linear both; }
+@keyframes gapfill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.sen-ctl { display: flex; align-items: center; justify-content: center; gap: 22px; }
+.sen-ctl .icon-btn { width: 48px; height: 48px; border: 1px solid var(--line); background: var(--card); }
+.sen-ctl .icon-btn[disabled] { opacity: .35; }
+.sen-main { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); }
+.sen-main .ico { width: 30px; height: 30px; }
+.sen-opts { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.sen-opts .chips { justify-content: center; align-items: center; }
+.sen-opts .lbl { font-size: 13px; color: var(--ink-3); font-weight: 600; }
+.sen-q { line-height: 1.45; }
+.sline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 64px; padding: 10px 12px; border-radius: 14px; border: 1.5px dashed var(--line); background: var(--card); }
+.sline.right { border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+.sline.wrong { border-style: solid; border-color: var(--cabai); background: var(--cabai-soft); }
+.sen-ph { color: var(--ink-3); font-size: 14px; margin: 0 auto; }
+.stile { height: 42px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--bg); font-size: 17px; font-weight: 650; }
+.stile[disabled] { opacity: 1; color: inherit; }
+.ptile.wd { font-size: 17px; font-weight: 650; height: 44px; padding: 0 13px; }
+.stiles { justify-content: flex-start; }
 @media (max-width: 420px) { .pslot { width: 30px; height: 42px; font-size: 19px; } .pword, .pslots { gap: 4px; } }
