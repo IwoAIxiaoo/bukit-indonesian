@@ -1,10 +1,10 @@
 // 收集课程里所有需要发音的文本，输出 texts.json：[{key, text, pack}]
 const fs = require('fs'), vm = require('vm');
 const SRC = (process.env.BUKIT_ROOT || require('path').join(__dirname, '..')) + '/src/';   // 默认：tools/ 的上一级；脚本放在别处时用 BUKIT_ROOT 指定
-const code = ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'grammar.js', 'ref.js', 'pron.js'].map(f => fs.readFileSync(SRC + f, 'utf8')).join('\n')
-  + '\n;globalThis.__out = { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS };';
+const code = ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'grammar.js', 'ref.js', 'pron.js', 'reading.js'].map(f => fs.readFileSync(SRC + f, 'utf8')).join('\n')
+  + '\n;globalThis.__out = { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS, READS, READ_GLOSS };';
 const ctx = { console }; vm.createContext(ctx); vm.runInContext(code, ctx);
-const { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS } = ctx.__out;
+const { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS, READS, READ_GLOSS } = ctx.__out;
 const key = t => String(t).toLowerCase().replace(/[\[\]«»“”"]/g, '').replace(/\s+/g, ' ').trim();
 const plain = t => String(t).replace(/[\[\]«»]/g, '');
 const items = new Map();
@@ -39,6 +39,10 @@ PAIRS.forEach(p => { add(p[0], 'core', true); add(p[2], 'core', true); });
 const refAdd = (text, slow) => { if (!items.has(key(text))) add(text, 'ref', slow); };
 const refInline = s => { String(s || '').replace(/«(.+?)»/g, (m, x) => { refAdd(x, true); return m; }); };
 REFS.forEach(r => r.cards.forEach(c => { refInline(c.p); refInline(c.n); (c.t || []).forEach(row => row.forEach(refInline)); (c.ex || []).forEach(e => refAdd(e[0], false)); }));
+// 短文阅读：和速查表一样只装新内容，按难度分三个包（read-a / read-b / read-c）；句子和标题是整句，生词带 slow 标记走单词的做法
+const readAdd = (text, pack, slow) => { if (!items.has(key(text))) add(text, pack, slow); };
+READS.forEach(r => { const p = 'read-' + r.lv; readAdd(r.t, p, false); r.s.forEach(x => readAdd(x[1], p, false)); r.g.forEach(g => readAdd(g[0], p, true)); });
+READ_GLOSS.forEach(g => readAdd(g[0], 'read-a', true));
 const arr = [...items.values()];
 fs.writeFileSync(__dirname + '/texts.json', JSON.stringify(arr));
 const packs = {}; arr.forEach(x => x.packs.forEach(p => { packs[p] = (packs[p] || 0) + 1; }));

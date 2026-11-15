@@ -8,7 +8,7 @@ const audio = existsSync(at('./audio/index.json')) ? JSON.parse(readFileSync(at(
 const BUILD = new Date().toISOString().slice(0, 10);
 const flags = offline => 'const OFFLINE = ' + offline + ';\nconst BUILD = ' + JSON.stringify(BUILD) + ';\n';
 const audioJs = 'const AUDIO_PACKS = ' + JSON.stringify(audio.packs) + ';\nconst AUDIO_IDX = ' + JSON.stringify(audio.idx) + ';\nconst AUDIO_HUMAN = ' + JSON.stringify(audio.human || {}) + ';\nconst AUDIO_VAR = ' + JSON.stringify(audio.var || {}) + ';\nconst AUDIO_CREDIT = ' + JSON.stringify(audio.credit || { speakers: [], licenses: [] }) + ';\n';
-const code = ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'grammar.js', 'ref.js', 'pron.js', 'ipa.js', 'app.js'].map(src).join('\n');
+const code = ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'grammar.js', 'ref.js', 'reading.js', 'pron.js', 'ipa.js', 'lookup.js', 'app.js'].map(src).join('\n');
 const body = `<div class="app">
   <nav class="nav" id="nav" aria-label="主导航"></nav>
   <div class="shell">

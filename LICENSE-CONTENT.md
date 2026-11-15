@@ -7,6 +7,7 @@
 - `src/content-1.js` 到 `src/content-6.js`（单词、释义、例句、文化贴士）
 - `src/grammar.js`（语法卡片）
 - `src/ref.js`（语法速查表）
+- `src/reading.js`（短文阅读的短文、译文和生词表）
 - `src/pron.js`（字母表、拼读规则、听辨词对）
 
 你可以：

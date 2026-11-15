@@ -926,6 +926,8 @@ function vHome() {
     h += '<section class="card action"><div class="goal-ring">' + ringSVG(wait ? 0 : 1) + '<span>' + (wait ? '<span class="num">' + wait + '</span>' : ico('check')) + '</span></div><div class="grow"><p class="eyebrow">今日复习</p><h3>' + (wait ? wait + ' 个词等 10 分钟后再考' : '现在没有到期的词') + '</h3><p class="sub">' + (wait ? '刚才选了“不认识”的词，过一会儿回来再考一次。' : '下一批在' + (nd - t <= 1 ? '明天' : ' ' + fmtDay(nd)) + '。') + (soon ? ' 有 ' + soon + ' 个快到期或没记牢的词可以提前复习。' : '') + '</p></div>' + (soon || wait ? '<a class="btn" href="#review">去看看</a>' : '') + '</section>';
   }
   h += '<section class="card action"><div class="grow"><p class="eyebrow">自由练习</p><h3>练单词，也练句子</h3><p class="sub">九种单词练习（选义、拼写、跟打、听写、限时模拟……），加上句子连播、影子跟读和组句。</p></div><button class="btn" data-act="pracHub">去练习</button></section>';
+  const nRead = READS.filter(r => isRead(r.id)).length, nextRead = READS.find(r => !isRead(r.id));
+  h += '<section class="card action"><div class="grow"><p class="eyebrow">短文阅读 · 已读 ' + nRead + ' / ' + READS.length + '</p><h3' + (nextRead ? ' lang="id"' : '') + '>' + (nextRead ? esc(nextRead.t) : '全部读完了') + '</h3><p class="sub">' + (nextRead ? esc(nextRead.zh) + ' · ' + esc(nextRead.kind) + ' · ' + nextRead.s.length + ' 句' : '可以回头再听一遍，或者用短文做跟读。') + '</p></div><a class="btn" href="#read' + (nextRead ? '-' + nextRead.id : '') + '">' + (nextRead ? '去读' : '看列表') + '</a></section>';
   const ts = todaySentence();
   if (next) Clips.pack(next.id);
   if (ts) {
@@ -957,6 +959,7 @@ function vLearn() {
     + '<label class="search">' + ico('search') + '<span class="sr">搜索单词</span><input id="q" type="search" placeholder="搜印尼语或中文，比如 makan / 吃" value="' + esc(UI.q) + '" autocomplete="off" spellcheck="false"></label>'
     + '<div id="search-res">' + searchResults(UI.q) + '</div>'
     + '<a class="deckrow reflink" href="#ref"><span class="gi">表</span><span class="grow"><b>语法速查表</b><small>me- 变化、-nya 用法、词缀一览、代词、疑问词、数字……共 ' + REFS.length + ' 张，随时可查</small></span>' + ico('next') + '</a>'
+    + '<a class="deckrow reflink" href="#read"><span class="gi">读</span><span class="grow"><b>短文阅读</b><small>' + READS.length + ' 篇分级短文：对话、通知、行业短新闻，逐句能听、点词能查 · 已读 ' + READS.filter(r => isRead(r.id)).length + ' 篇</small></span>' + ico('next') + '</a>'
     + '<div class="chips" role="group" aria-label="按场景筛选">' + [['all', '全部']].concat(Object.keys(SCENES).map(k => [k, SCENES[k]])).map(x => '<button class="chip" data-act="lfilter" data-v="' + x[0] + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + '</button>').join('') + '</div>';
   GROUPS.forEach(g => {
     const ts = g.ids.map(id => TOPIC_BY[id]).filter(t => t && (f === 'all' || t.sc.includes(f)));
@@ -1759,6 +1762,96 @@ function vSense() {
   return h + '</div>';
 }
 
+/* ---------- 短文阅读 ---------- */
+// 读过的篇目记在 prefs.read 里，跟着账号同步。查词用 lookup.js 里的 lookupToken()。
+const isRead = id => !!(S.prefs.read && S.prefs.read[id]);
+let READ_LEX = null, READ_ALLG = null;
+function readDict(r) {
+  if (!READ_LEX) {
+    READ_LEX = new Map(); WLIST.forEach(w => { const k = lexKey(w.w); if (!READ_LEX.has(k)) READ_LEX.set(k, w); });
+    READ_ALLG = new Map(); READ_GLOSS.forEach(g => READ_ALLG.set(lexKey(g[0]), g));
+    READS.forEach(x => x.g.forEach(g => { const k = lexKey(g[0]); if (!READ_ALLG.has(k)) READ_ALLG.set(k, g); }));
+  }
+  const own = new Map(r.g.map(g => [lexKey(g[0]), g]));   // 本篇的生词表优先，其次是别的篇目和常见词
+  return { gloss: k => own.get(k) || READ_ALLG.get(k) || null, word: k => READ_LEX.get(k) || null, name: t => READ_NAMES[t] || null };
+}
+const readItems = r => r.s.map(x => ({ id: x[1], zh: x[2] }));
+const readKey = r => 'readall:' + r.id;
+// 一句话拆成可以点的词：标点留在原处，词做成按钮，序号和 lexTokens() 对得上
+function readWords(text, k) {
+  let i = 0;
+  return String(text).split(/(\s+)/).map(ch => {
+    if (!ch.trim()) return ch;
+    const m = ch.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}%]*)$/u);
+    if (!m || !m[2]) return esc(ch);
+    return esc(m[1]) + '<button class="rw" data-act="rword" data-s="' + k + '" data-i="' + (i++) + '">' + esc(m[2]) + '</button>' + esc(m[3]);
+  }).join('');
+}
+function readCard(r) {
+  const done = isRead(r.id);
+  return '<a class="deckrow reflink readrow' + (done ? ' seen' : '') + '" href="#read-' + r.id + '"><span class="gi">' + (done ? ico('check') : esc(r.kind.slice(0, 1))) + '</span><span class="grow"><b lang="id">' + esc(r.t) + '</b><small>' + esc(r.zh) + ' · ' + esc(r.kind) + ' · ' + r.s.length + ' 句' + (done ? ' · 已读' : '') + '</small></span>' + ico('next') + '</a>';
+}
+function readGlossHTML(g) {
+  if (!g) return '';
+  const can = t => canSpeak() && Clips.has(t);
+  const sayT = g.kind === 'root' ? g.root : g.text;
+  let h = (g.kind !== 'name' && g.kind !== 'none' && can(sayT) ? sayBtn(sayT, 'sm') : '') + '<div class="grow"><p class="rg-w"><b lang="id">' + esc(g.text) + '</b>'
+    + (g.kind === 'root' ? ' <span class="muted">词根</span> <b lang="id">' + esc(g.root) + '</b>' : '') + '</p><p class="rg-z">';
+  if (g.kind === 'none') h += '这个词还没有收录。';
+  else h += esc(g.zh) + (g.kind === 'root' && /nya$/.test(g.text.toLowerCase()) ? ' <span class="muted">· -nya 相当于“他的 / 它的 / 这个”</span>' : '');
+  h += '</p></div>' + (g.word ? '<button class="linkbtn" data-act="word" data-id="' + esc(g.word.id) + '">单词卡</button>' : '')
+    + '<button class="icon-btn" data-act="rgClose" aria-label="关闭">' + ico('close') + '</button>';
+  return h;
+}
+function vReadList() {
+  const n = READS.filter(r => isRead(r.id)).length;
+  let h = '<div class="page wrap"><a class="back" href="#learn">' + ico('back') + '课程</a><div><h1 class="h-page">短文阅读</h1><p class="sub">' + READS.length + ' 篇分级短文，已读 ' + n + ' 篇。每一句都能点开听，点句子里的词可以查意思，读完还能用这一篇做跟读和组句练习。</p></div>';
+  READ_LEVELS.forEach(l => {
+    const rs = READS.filter(r => r.lv === l[0]);
+    h += '<section class="stack"><h2 class="h-sec">' + l[1] + ' <small>' + rs.length + ' 篇</small></h2><p class="sub" style="margin-top:-6px">' + l[2] + '</p><div class="stack" style="gap:8px">' + rs.map(readCard).join('') + '</div></section>';
+  });
+  return h + '<p class="hint">短文由 AI 编写，没有经过印尼语母语者审校；新闻和公文是仿写的练习材料，不是真实报道。</p></div>';
+}
+function vRead(id) {
+  const r = READ_BY[id];
+  if (!r) return vReadList();
+  const showId = DEV.readId !== false, showZh = DEV.readZh !== false, lv = READ_LEVELS.find(l => l[0] === r.lv), at = READS.indexOf(r);
+  if (UI.rg && UI.rg.rid !== r.id) UI.rg = null;
+  Clips.prefetch(r.s.slice(0, 4).map(x => x[1]));
+  let h = '<div class="page wrap"><a class="back" href="#read">' + ico('back') + '全部短文</a>'
+    + '<header class="thead stack"><p class="eyebrow">' + lv[1] + ' · ' + esc(r.kind) + ' · ' + r.s.length + ' 句' + (isRead(r.id) ? ' · 已读' : '') + '</p><div><h1 lang="id">' + esc(r.t) + '</h1><p class="idn" style="font-style:normal">' + esc(r.zh) + '</p></div></header>'
+    + '<div class="rtools"><button class="btn sm primary" data-act="readPlay" data-key="' + esc(readKey(r)) + '">' + ico('play') + '<span class="when-off">从头连续播放</span><span class="when-on">停止播放</span></button>'
+    + '<div class="chips"><button class="chip" data-act="readSet" data-k="readId" aria-pressed="' + showId + '">印尼语文字</button><button class="chip" data-act="readSet" data-k="readZh" aria-pressed="' + showZh + '">中文</button></div></div>'
+    + '<section class="card rtext" id="rtext">' + r.s.map((x, k) => '<div class="rs" data-k="' + k + '">' + sayBtn(x[1], 'sm')
+      + '<div class="grow">' + (x[0] ? '<span class="rspk">' + esc(x[0]) + '</span>' : '')
+      + (showId ? '<p class="rs-id" lang="id">' + readWords(x[1], k) + '</p>' : '<p class="rs-hid">文字已隐藏，点左边的喇叭先听</p>')
+      + (showZh ? '<p class="rs-zh">' + esc(x[2]) + '</p>' : '') + '</div></div>').join('') + '</section>'
+    + (r.n ? '<p class="hint">' + esc(r.n) + '</p>' : '')
+    + '<p class="hint">点句子里的任何一个词可以看意思。' + (showId && showZh ? '想练听力，先把“印尼语文字”和“中文”都关掉，听完再打开核对。' : '') + '</p>';
+  if (r.g.length) h += '<section class="card stack"><h2 class="h-sec">生词 <small>' + r.g.length + ' 个 · 课程里没有单独列出的</small></h2><div class="rglist">'
+    + r.g.map(g => '<div class="rgrow">' + (canSpeak() && Clips.has(g[0]) ? sayBtn(g[0], 'sm') : '<span class="say sm" style="visibility:hidden"></span>') + '<b lang="id">' + esc(g[0]) + '</b><span>' + esc(g[1]) + '</span></div>').join('') + '</div></section>';
+  h += '<section class="card stack"><h2 class="h-sec">用这一篇练一练</h2><div class="pmodes">'
+    + SMODES.filter(m => m[0] !== 'play').map(m => '<button class="pmode smode" data-act="readSen" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div></section>'
+    + '<div class="stack"><button class="btn block' + (isRead(r.id) ? '' : ' primary') + '" data-act="readDone">' + (isRead(r.id) ? '已读（点一下取消）' : '读完了，标为已读') + '</button>'
+    + (READS[at + 1] ? '<a class="btn block long" href="#read-' + READS[at + 1].id + '">下一篇：<span lang="id">' + esc(READS[at + 1].t) + '</span></a>' : '') + '</div>'
+    + '<div class="rgloss" id="rgloss"' + (UI.rg ? '' : ' hidden') + ' aria-live="polite">' + readGlossHTML(UI.rg) + '</div>';
+  return h + '</div>';
+}
+// 连续播放时标出正在读的那一句
+let readTimerId = 0;
+function readWatch() {
+  clearInterval(readTimerId);
+  let last = -2;
+  readTimerId = setInterval(() => {
+    const c = TTS.cur, on = c && String(c.key).indexOf('readall:') === 0 && UI.route.name === 'read';
+    const k = on ? c.i - 1 : -1;
+    $$('.rs.cur').forEach(el => { if (+el.dataset.k !== k) el.classList.remove('cur'); });
+    if (k >= 0) { const el = $('.rs[data-k="' + k + '"]'); if (el && !el.classList.contains('cur')) { el.classList.add('cur'); if (k !== last) el.scrollIntoView({ block: 'nearest' }); } }
+    last = k;
+    if (!on) clearInterval(readTimerId);
+  }, 150);
+}
+
 /* ---------- 今日学习：把复习、学新词、默写串成一次 ---------- */
 // 顺序固定：复习到期的词 → 学一组新词（当天目标没完成时）→ 默写今天学的词。没有内容的步骤自动跳过。
 const FLOW_STEPS = ['review', 'study', 'spell'];
@@ -2061,7 +2154,7 @@ function refreshWordViews(id) {
   if (UI.sheetWord === id) { const p = $('.sheet-panel'); const top = p ? p.scrollTop : 0; openWord(id); const p2 = $('.sheet-panel'); if (p2) p2.scrollTop = top; }
   else if (UI.route.name === 'study') { const y = window.scrollY; render(); window.scrollTo(0, y); }
 }
-const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice, sense: vSense };
+const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice, sense: vSense, read: vRead };
 function parseHash() {
   let h = location.hash.slice(1);
   try { h = decodeURIComponent(h); } catch (e) { /* 忽略 */ }
@@ -2070,6 +2163,7 @@ function parseHash() {
   if (h.indexOf('ref-') === 0) return { name: 'ref', arg: h.slice(4) };
   if (h === 'practice') return UI.prac ? { name: 'practice' } : { name: 'review' };
   if (h === 'sense') return UI.sen ? { name: 'sense' } : { name: 'review' };
+  if (h.indexOf('read-') === 0) return { name: 'read', arg: h.slice(5) };
   if (h && VIEWS[h] && h !== 'topic') return { name: h };
   return { name: 'home' };
 }
@@ -2086,7 +2180,7 @@ function route() {
   const prev = UI.route.name;
   UI.route = parseHash();
   closeSheetSilently();
-  if (prev !== UI.route.name || UI.route.name === 'topic') TTS.stop();
+  if (prev !== UI.route.name || UI.route.name === 'topic' || UI.route.name === 'read') TTS.stop();
   if (prev === 'sense' && UI.route.name !== 'sense' && UI.sen && UI.sen.playing) { UI.sen.playing = false; UI.sen.phase = ''; clearInterval(senTimerId); }   // 离开页面就暂停连播
   render();
   window.scrollTo(0, 0);
@@ -2103,7 +2197,7 @@ function render() {
   if (TTS.cur) markPlaying(TTS.cur.key, true);
 }
 function updateNav() {
-  const cur = ['topic', 'study', 'ref'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' || UI.route.name === 'sense' ? 'review' : UI.route.name;
+  const cur = ['topic', 'study', 'ref', 'read'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' || UI.route.name === 'sense' ? 'review' : UI.route.name;
   $$('#nav a[data-nav]').forEach(a => { if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const b = $('#due-badge'), n = dueIds().length;
   if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n); }
@@ -2277,6 +2371,32 @@ const ACT = {
   },
   flowQuit: () => { UI.flow = null; render(); },
   pracScopeSet: b => { UI.pscope = b.dataset.v; render(); const el = $('#prac-hub'); if (el) el.scrollIntoView(); },
+  readPlay: () => {
+    const r = READ_BY[UI.route.arg]; if (!r) return;
+    if (!canSpeak()) { toast('这个浏览器不能播放声音'); return; }
+    TTS.run(r.s.map(x => ({ text: plain(x[1]) })), readKey(r), {});   // 再点一次同一个按钮就是停止
+    readWatch();
+  },
+  readSet: b => { const k = b.dataset.k; DEV[k] = DEV[k] === false; saveDev(); const y = window.scrollY; render(); window.scrollTo(0, y); },
+  readSen: b => { const r = READ_BY[UI.route.arg]; if (r) startSense(b.dataset.m, readItems(r), r.t, { keepOrder: b.dataset.m === 'shadow', back: 'read-' + r.id }); },
+  readDone: () => {
+    const r = READ_BY[UI.route.arg]; if (!r) return;
+    const m = {}; Object.keys(S.prefs.read || {}).forEach(x => { if (x !== r.id) m[x] = 1; });
+    if (!isRead(r.id)) m[r.id] = 1;
+    setPrefs({ read: m });
+    const y = window.scrollY; render(); window.scrollTo(0, y);
+    toast(m[r.id] ? '已标为读过' : '已取消');
+  },
+  rword: b => {
+    const r = READ_BY[UI.route.arg]; if (!r) return;
+    const k = +b.dataset.s, i = +b.dataset.i, res = lookupToken(lexTokens(r.s[k][1]), i, readDict(r));
+    UI.rg = Object.assign({ rid: r.id }, res);
+    $$('.rw.on').forEach(x => x.classList.remove('on')); b.classList.add('on');
+    const el = $('#rgloss'); if (el) { el.innerHTML = readGlossHTML(UI.rg); el.hidden = false; }
+    const sayT = res.kind === 'root' ? res.root : res.text;
+    if (res.kind !== 'name' && res.kind !== 'none' && Clips.has(sayT) && !(TTS.cur && String(TTS.cur.key).indexOf('readall:') === 0)) autoSay(sayT);   // 连续播放时不打断
+  },
+  rgClose: () => { UI.rg = null; $$('.rw.on').forEach(x => x.classList.remove('on')); const el = $('#rgloss'); if (el) { el.hidden = true; el.innerHTML = ''; } },
   senStart: b => startSense(b.dataset.m),
   senAgain: () => { const s = UI.sen; if (s) startSense(s.mode, s.src ? s.src.items : null, s.src ? s.src.label : null, s.src ? s.src.o : null); },
   senExit: () => senExit(),

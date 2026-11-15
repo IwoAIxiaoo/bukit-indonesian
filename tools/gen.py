@@ -35,6 +35,7 @@ LETTER = dict(a='a', b='be', c='ce', d='de', e='e', f='ef', g='ge', h='ha', i='i
 SPECIAL = {
     'AMDAL': 'amdal', 'HALAL': 'halal', 'QRIS': 'kris', 'WhatsApp': 'wotsap', 'IUPnya': 'i u pe nya',
     'AC': 'a se', 'WiFi': 'waifai', 'APAR': 'apar', 'P3K': 'pe tiga ka', 'K3': 'ka tiga', 'B3': 'be tiga', 'P2H': 'pe dua ha', 'kkal/kg': 'kilokalori per kilogram',
+    'Yth.': 'yang terhormat', 'check-in': 'cek in', 'Check-in': 'cek in',
 }
 def spell(tok):
     return ' '.join(LETTER.get(ch.lower(), '') for ch in tok)
