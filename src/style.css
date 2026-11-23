@@ -636,3 +636,25 @@ details.more summary { cursor: pointer; font-weight: 650; color: var(--ink-2); f
 .btn.long > span { overflow-wrap: anywhere; }
 /* 链接做成的按钮默认按内容盒计算宽度，整行宽时会比容器宽出内边距，这里统一成边框盒 */
 a.btn { box-sizing: border-box; }
+
+/* 易混词 */
+.w-cf { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--sunk); }
+.w-cf .lbl { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.cfg { display: flex; flex-direction: column; gap: 6px; }
+.cfg + .cfg { border-top: 1px solid var(--line); padding-top: 10px; }
+.cft { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+.cft .tag { font-size: 11.5px; height: 20px; }
+.cfg .hint, .cfcard .hint { font-size: 13px; line-height: 1.6; }
+.cfrows { display: flex; flex-direction: column; }
+.cfrow { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.cfrow:last-child { border-bottom: 0; }
+.cfrow .say { flex-shrink: 0; margin-top: 1px; }
+.cfrow .grow { min-width: 0; }
+.cfrow p:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.cfrow b, .cfw { font-size: 16px; font-weight: 750; }
+.cfw { color: var(--accent-2); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 3px; padding: 0; }
+.cfrow.me b { background: color-mix(in srgb, var(--kunyit) 26%, transparent); border-radius: 4px; padding: 0 3px; }
+.cfz { font-size: 14px; color: var(--ink-2); }
+.cfn { font-size: 13px; color: var(--ink-3); line-height: 1.55; margin-top: 1px; }
+.cfcard h3 { font-size: 17px; font-weight: 750; }
+.wchip.weak { background: var(--cabai-soft); }

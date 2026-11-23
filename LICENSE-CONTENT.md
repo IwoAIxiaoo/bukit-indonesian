@@ -8,6 +8,7 @@
 - `src/grammar.js`（语法卡片）
 - `src/ref.js`（语法速查表）
 - `src/reading.js`（短文阅读的短文、译文和生词表）
+- `src/confuse.js`（易混词分组和区分说明）
 - `src/pron.js`（字母表、拼读规则、听辨词对）
 
 你可以：

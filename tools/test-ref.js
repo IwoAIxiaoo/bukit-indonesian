@@ -24,10 +24,10 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   if (await p.$('[data-act="onbDone"]')) { await p.goto(URL0 + '#home'); await p.click('[data-act="onbDone"]'); await p.goto(URL0 + '#learn'); await p.waitForTimeout(300); }
 
   const link = await p.$eval('.reflink', e => e.textContent);
-  check('lessons page has the reference entry', /语法速查表/.test(link) && /26 张/.test(link), link);
+  check('lessons page has the reference entry', /语法速查表/.test(link) && /29 张/.test(link), link);
   await p.click('.reflink'); await p.waitForSelector('.refd'); await p.waitForTimeout(600);
   const page1 = await p.evaluate(() => ({ n: document.querySelectorAll('.refd').length, open: document.querySelectorAll('.refd[open]').length, groups: [...document.querySelectorAll('.h-sec')].map(h => h.textContent.trim()), nav: (document.querySelector('#nav a[aria-current="page"]') || {}).dataset.nav, titles: [...document.querySelectorAll('.refd summary b')].map(x => x.textContent) }));
-  check('reference page lists 26 collapsed sheets in 3 groups, under 课程', page1.n === 26 && page1.open === 0 && page1.groups.length === 3 && page1.nav === 'learn', JSON.stringify(page1.groups));
+  check('reference page lists 29 collapsed sheets in 4 groups (incl. 易混词), under 课程', page1.n === 29 && page1.open === 0 && page1.groups.length === 4 && page1.nav === 'learn', JSON.stringify(page1.groups));
   console.log('sheets:', page1.titles.join(' | '));
   await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-ref-list.png' });
 

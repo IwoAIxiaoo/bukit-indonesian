@@ -35,7 +35,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
     try { const orig = speechSynthesis.speak.bind(speechSynthesis); speechSynthesis.speak = u => { window.__tts++; return orig(u); }; } catch (e) {}
     const op = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function () { window.__last = this; window.__plays.push({ len: (this.src || '').length, rate: this.playbackRate }); return op.call(this); };
-    try { if (sessionStorage.getItem('mkdue')) { sessionStorage.removeItem('mkdue'); const orig = Storage.prototype.getItem; let done = false; Storage.prototype.getItem = function (k) { const v = orig.call(this, k); if (k !== 'bukit.v1' || done || !v) return v; done = true; const o = JSON.parse(v); const t = Math.floor((Date.now() - new Date().getTimezoneOffset() * 6e4) / 864e5); Object.values(o.words).forEach(s => { s[1] = t; }); o.log['2026-11-01'] = { n: 5, r: 12, s: 600 }; o.log['2026-11-03'] = { n: 8, r: 3, s: 300 }; return JSON.stringify(o); }; } } catch (e) {}
+    try { if (/[?&]mkdue\b/.test(location.search)) { const orig = Storage.prototype.getItem; let done = false; Storage.prototype.getItem = function (k) { const v = orig.call(this, k); if (k !== 'bukit.v1' || done || !v) return v; done = true; const o = JSON.parse(v); const t = Math.floor((Date.now() - new Date().getTimezoneOffset() * 6e4) / 864e5); Object.values(o.words).forEach(s => { s[1] = t; s[7] = 0; }); o.log['2026-11-01'] = { n: 5, r: 12, s: 600 }; o.log['2026-11-03'] = { n: 8, r: 3, s: 300 }; return JSON.stringify(o); }; } } catch (e) {}
   });
   const page = await ctx.newPage();
   const errors = [], net = [];
@@ -106,8 +106,9 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
 
   // 学一组
   await page.click('[data-act="study"]');
-  let guard = 0;
-  while (guard++ < 80) {
+  let guard = 0, idle = 0;
+  while (guard++ < 160) {
+    if (await page.$('.s-foot [data-act="next"], .qopt:not([disabled]), #spell-in:not([disabled]), [data-act="qnext"]')) idle = 0;   // 只数连续没东西可点的次数
     if (await page.$('.s-foot [data-act="next"]')) {
       if (await page.$('.deck')) { await page.click('.deck [data-act="dnext"]'); await page.waitForTimeout(300); }
       await page.click('.s-foot [data-act="next"]'); continue;
@@ -117,10 +118,12 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
     const sp = await page.$('#spell-in:not([disabled])');
     if (sp) { await sp.fill('salah'); await page.click('.spell button[type=submit]'); await page.waitForTimeout(200); const qn = await page.$('[data-act="qnext"]'); if (qn) await qn.click(); continue; }
     const qn = await page.$('[data-act="qnext"]'); if (qn) { await qn.click(); continue; }
-    break;
+    // 答对后页面会停一下再自动跳到下一题；结束页上就真的没有可点的了
+    if (await page.$('.done-big') || ++idle > 6) break;
+    await page.waitForTimeout(400);
   }
   const learned = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('bukit.v1')).words).length);
-  check('study session records learned words', learned >= 5, learned + ' words');
+  check('study session records learned words', learned >= 5 && !!(await page.$('.done-big')), learned + ' words | ' + (await page.evaluate(() => document.querySelector('#main').innerText.replace(/\s+/g, ' ').slice(0, 160))));
   await shot('off-study-done');
 
   // 重新打开文件后进度还在
@@ -129,8 +132,8 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   check('progress survives reopening the file', after.n === learned && !after.onb, JSON.stringify(after));
 
   // 复习
-  await page.evaluate(() => sessionStorage.setItem('mkdue', '1'));
-  await page.goto(URL0 + '#review'); await page.reload(); await page.waitForSelector('[data-act="revStart"]'); await page.waitForTimeout(300);
+  // 地址里带 ?mkdue 的这一次打开：读进度时把词都改成今天到期（之后换回原地址就不再改）
+  await page.goto(URL0 + '?mkdue=1#review'); await page.waitForSelector('[data-act="revStart"]'); await page.waitForTimeout(300);
   await page.click('[data-act="revStart"]'); await page.click('[data-act="reveal"]'); await shot('off-review');
   for (let i = 0; i < 40; i++) { const g = await page.$('[data-act="grade"][data-v="2"]'); if (!g) { const r = await page.$('[data-act="reveal"]'); if (r) { await r.click(); continue; } break; } await g.click(); await page.waitForTimeout(80); }
   check('review session completes', !(await page.$('[data-act="grade"]')));

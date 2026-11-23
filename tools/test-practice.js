@@ -37,7 +37,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   check('home has the practice entry', !!(await p.$('[data-act="pracHub"]')));
   await p.click('[data-act="pracHub"]'); await p.waitForSelector('#prac-hub'); await p.waitForTimeout(300);
   const hub = await p.evaluate(() => ({ modes: [...document.querySelectorAll('.pmode:not(.smode) b')].map(x => x.textContent), opts: document.querySelectorAll('#pscope option').length, sel: document.querySelector('#pscope').value, xp: /XP|经验值|等级/.test(document.querySelector('#main').innerText) }));
-  check('hub: 9 modes, scope list (learned + error book + favourites + all + 31 lessons), no XP or levels', hub.modes.length === 9 && hub.opts === 35 && hub.sel === 'learned' && !hub.xp, hub.modes.join(' / '));
+  check('hub: 10 modes, scope list (learned + error book + favourites + all + 31 lessons), no XP or levels', hub.modes.length === 10 && hub.opts === 35 && hub.sel === 'learned' && !hub.xp, hub.modes.join(' / '));
   await p.locator('#prac-hub').screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-prac-hub.png' });
 
   // 读出当前题目的正确答案（按题型）

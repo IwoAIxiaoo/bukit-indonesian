@@ -4,7 +4,7 @@ const OUT = require('path').join(__dirname, 'shots') + '/'; require('fs').mkdirS
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
-  await ctx.addInitScript(() => { try { if (sessionStorage.getItem('mkdue')) { sessionStorage.removeItem('mkdue'); const orig = Storage.prototype.getItem; let done = false; Storage.prototype.getItem = function (k) { const v = orig.call(this, k); if (k !== 'bukit.v1' || done || !v) return v; done = true; const o = JSON.parse(v); const t = Math.floor((Date.now() - new Date().getTimezoneOffset() * 6e4) / 864e5); Object.values(o.words).forEach(s => { s[1] = t; }); o.log['2026-11-01'] = { n: 5, r: 12, s: 600 }; o.log['2026-11-03'] = { n: 8, r: 3, s: 300 }; o.log['2026-10-20'] = { n: 3, r: 30, s: 900 }; o.log['2026-09-12'] = { n: 10, r: 4, s: 900 }; o.log['2026-11-07'] = { n: 6, r: 18, s: 1200 }; return JSON.stringify(o); }; } } catch (e) {} });
+  await ctx.addInitScript(() => { try { if (/[?&]mkdue\b/.test(location.search)) { const orig = Storage.prototype.getItem; let done = false; Storage.prototype.getItem = function (k) { const v = orig.call(this, k); if (k !== 'bukit.v1' || done || !v) return v; done = true; const o = JSON.parse(v); const t = Math.floor((Date.now() - new Date().getTimezoneOffset() * 6e4) / 864e5); Object.values(o.words).forEach(s => { s[1] = t; s[7] = 0; }); o.log['2026-11-01'] = { n: 5, r: 12, s: 600 }; o.log['2026-11-03'] = { n: 8, r: 3, s: 300 }; o.log['2026-10-20'] = { n: 3, r: 30, s: 900 }; o.log['2026-09-12'] = { n: 10, r: 4, s: 900 }; o.log['2026-11-07'] = { n: 6, r: 18, s: 1200 }; return JSON.stringify(o); }; } } catch (e) {} });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -46,8 +46,9 @@ const OUT = require('path').join(__dirname, 'shots') + '/'; require('fs').mkdirS
   await page.click('.sheet-bar [data-act="closeSheet"]');
   // 学习一组
   await page.click('[data-act="study"]');
-  let guard = 0;
-  while (guard++ < 60) {
+  let guard = 0, idle = 0;
+  while (guard++ < 160) {
+    if (await page.$('.s-foot [data-act="next"], .qopt:not([disabled]), #spell-in:not([disabled]), [data-act="qnext"]')) idle = 0;   // 只数连续没东西可点的次数
     const st = await page.evaluate(() => { const s = window.__s; return null; });
     const hasNext = await page.$('.s-foot [data-act="next"]');
     if (hasNext) {
@@ -69,14 +70,14 @@ const OUT = require('path').join(__dirname, 'shots') + '/'; require('fs').mkdirS
     const sp = await page.$('#spell-in:not([disabled])');
     if (sp) { await sp.fill('salah'); await page.click('.spell button[type=submit]'); await page.waitForTimeout(200); const qn = await page.$('[data-act="qnext"]'); if (qn) await qn.click(); continue; }
     const qn = await page.$('[data-act="qnext"]'); if (qn) { await qn.click(); continue; }
-    break;
+    if (await page.$('.done-big') || ++idle > 6) break;
+    await page.waitForTimeout(400);
   }
   await shot('m-study-done');
   const learned = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('bukit.v1')).words).length);
   console.log('learned after session:', learned);
   // 让这些词今天到期，测试复习
-  await page.evaluate(() => sessionStorage.setItem('mkdue', '1'));
-  await page.goto('http://127.0.0.1:8765/bukit.html#review'); await page.reload(); await page.waitForTimeout(500); await shot('m-review-start');
+  await page.goto('http://127.0.0.1:8765/bukit.html?mkdue=1#review'); await page.waitForSelector('[data-act="revStart"]'); await page.waitForTimeout(500); await shot('m-review-start');
   await page.click('[data-act="revStart"]'); await shot('m-review-front');
   await page.click('[data-act="reveal"]'); await shot('m-review-back');
   for (let i = 0; i < 12; i++) { const g = await page.$('[data-act="grade"][data-v="2"]'); if (!g) { const r = await page.$('[data-act="reveal"]'); if (r) { await r.click(); continue; } break; } await g.click(); await page.waitForTimeout(80); }
