@@ -128,24 +128,25 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   const rv = await text();
   check('review page: new words are listed as coming back later, the weak one as waiting 10 minutes, none due now', /今天新学的词/.test(rv) && /7 个词\d\d:\d\d以后回到复习里再看一次/.test(rv.replace('明天 ', '')) && /等待再考/.test(rv) && rv.includes(finalWrong) && !/个词到期/.test(rv), (rv.match(/今天新学的词[^：]*/) || [''])[0]);
   // 3 小时后
-  await p.evaluate(() => { const o = Date.now.bind(Date); Date.now = () => o() + 3.1 * 3600e3; });
+  await p.evaluate(() => { const o = Date.now.bind(Date); window.__sh = 3.1 * 3600e3; Date.now = () => o() + window.__sh; });
   await p.evaluate(() => { location.hash = 'home'; }); await p.waitForTimeout(300);
   await p.evaluate(() => { location.hash = 'review'; }); await p.waitForTimeout(400);
   const rv2 = await text();
   check('three hours later the 8 words are due', /8 个词到期/.test(rv2), (rv2.match(/\d+ 个词到期/) || [''])[0]);
-  await p.click('[data-act="revStart"]'); await p.waitForSelector('[data-act="reveal"]'); await p.waitForTimeout(200);
-  const ids = [];
+  await p.click('[data-act="revStart"]'); await p.waitForSelector('.rev-card'); await p.waitForTimeout(200);
+  // 第一张点“看答案”（1 分），其余正常速度打对（3 分）
   for (let k = 0; k < 8; k++) {
-    if (await p.$('.qopts')) { await p.locator('.qopt').first().click(); await p.waitForTimeout(150); await p.click('[data-act="rqnext"]').catch(() => {}); await p.waitForTimeout(150); }
-    if (!(await p.$('[data-act="reveal"]'))) break;
-    await p.click('[data-act="reveal"]'); await p.waitForTimeout(150);
-    await p.click('[data-act="grade"][data-v="' + (k === 0 ? 0 : 2) + '"]'); await p.waitForTimeout(150);
+    const w = await p.evaluate(() => { const c = document.querySelector('.rev-card'); return c && document.querySelector('[data-act="revSkip"]') ? WORDS[c.dataset.w].w : null; });
+    if (!w) break;
+    if (k === 0) await p.click('[data-act="revSkip"]');
+    else { await p.evaluate(n => { window.__sh += n; }, (w.match(/\p{L}/gu) || []).length * 300 + 7000); await p.fill('#rev-in', w); await p.keyboard.press('Enter'); }
+    await p.waitForTimeout(150); await p.click('[data-act="revNext"]'); await p.waitForTimeout(150);
   }
   st = await state();
   const after = seed.words.map(id => [id, st.words[id]]);
   const known = after.filter(([id, r]) => r[6] === 2);
   const again = after.filter(([id, r]) => r[6] === 0);
-  check('“认识” on the same-day revisit: due tomorrow at level 1, not weak; “不认识”: back in 10 minutes', known.length >= 6 && known.every(([id, r]) => r[0] === 1 && r[1] === seed.t + 1 && r[7] === 0) && again.length === 1 && again[0][1][7] > Date.now() && again[0][1][1] === seed.t, JSON.stringify(after.slice(0, 3)));
+  check('same-day revisit is the first FSRS review: typed right → 认识, due in a few days, not weak; 看答案 → 不认识, due tomorrow', known.length === 7 && known.every(([id, r]) => Array.isArray(r[10]) && r[10][3] === 2 && r[1] >= seed.t + 2 && r[7] === 0) && again.length === 1 && again[0][1][1] === seed.t + 1 && again[0][1][7] === 0 && Array.isArray(again[0][1][10]), JSON.stringify(after.slice(0, 3)));
 
   // ---- 单词卡上的易混词
   await p.evaluate(() => { location.hash = 't-family'; }); await p.waitForSelector('.wrow-main'); await p.waitForTimeout(300);

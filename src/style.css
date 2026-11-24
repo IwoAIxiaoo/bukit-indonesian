@@ -658,3 +658,9 @@ a.btn { box-sizing: border-box; }
 .cfn { font-size: 13px; color: var(--ink-3); line-height: 1.55; margin-top: 1px; }
 .cfcard h3 { font-size: 17px; font-weight: 750; }
 .wchip.weak { background: var(--cabai-soft); }
+
+/* 复习打字卡 */
+.rev-hint { font-family: var(--font-ipa); font-size: 20px; letter-spacing: .08em; color: var(--accent-2); }
+.rev-tools { justify-content: center; gap: 10px; }
+.rev-res.r1 .why { background: var(--cabai-soft); }
+.rev-res.r4 .why, .rev-res.r3 .why { background: var(--accent-soft); }

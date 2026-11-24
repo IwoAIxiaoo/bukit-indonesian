@@ -65,7 +65,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   await p.locator('#sheet .sheet-panel').screenshot({ path: OUT + tag + '-word-acts.png' });
   await p.click('#sheet [data-act="known"]'); await p.waitForTimeout(200);
   st = await state();
-  check('undo 已掌握: back to its old level, due tomorrow, flag gone', st.words[id(3)][0] === 2 && st.words[id(3)][1] === seed.t + 1 && st.words[id(3)][8] === undefined, JSON.stringify(st.words[id(3)]));
+  check('undo 已掌握: back to its old level, due tomorrow, flag gone', st.words[id(3)][0] === 2 && st.words[id(3)][1] === seed.t + 1 && !st.words[id(3)][8], JSON.stringify(st.words[id(3)]));
   await closeSheet();
   // 没学过的词标成已掌握，再取消：变回没学过，不占今天的新词数
   await openWord(11);
@@ -136,12 +136,20 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   const expectWeak = wk[8] === 1 ? 1 : (dWrongId === id(0) ? 1 : 2);
   check('a wrong answer in practice puts a learned word into the error book', new RegExp('错词本\\s*' + expectWeak + ' 个').test(lists2) && (wk[8] === 1 || wk[6] === 1 || wk[6] === 0), lists2.replace(/\s+/g, ' ').slice(0, 60));
 
+  // 复习打字卡：打出正确答案再“继续”；不能打字的词点“看答案”
+  const revAnswer = async (pg, skip) => {
+    const w = await pg.evaluate(() => { const c = document.querySelector('.rev-card'); return c && document.querySelector('[data-act="revSkip"]') ? WORDS[c.dataset.w].w : null; });
+    if (!w) return false;
+    if (!skip && await pg.$('#rev-in')) { await pg.fill('#rev-in', w); await pg.keyboard.press('Enter'); } else await pg.click('[data-act="revSkip"]');
+    await pg.waitForTimeout(120); await pg.click('[data-act="revNext"]'); await pg.waitForTimeout(120);
+    return true;
+  };
   // ---- 今日学习：中途退出
   await p.goto(URL0 + '#home'); await p.waitForSelector('[data-act="flowStart"]'); await p.waitForTimeout(300);
-  await p.click('[data-act="flowStart"]'); await p.waitForSelector('[data-act="reveal"]'); await p.waitForTimeout(300);
+  await p.click('[data-act="flowStart"]'); await p.waitForSelector('.rev-card'); await p.waitForTimeout(300);
   const f0 = await text();
   check('today\'s session starts with the review', /今日学习/.test(f0) && /1\/4/.test(await p.evaluate(() => document.querySelector('.s-count').textContent.replace(/\s/g, ''))), f0.slice(0, 60));
-  await p.click('[data-act="reveal"]'); await p.waitForTimeout(250); await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(250);
+  await revAnswer(p);
   await p.click('[data-act="revExit"]'); await p.waitForTimeout(300);
   await p.goto(URL0 + '#home'); await p.waitForTimeout(400);
   const f1 = await text();
@@ -153,7 +161,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   await p.click('[data-act="flowStart"]'); await p.waitForSelector('.session'); await p.waitForTimeout(300);
   for (let k = 0; k < 20; k++) {
     if (await p.$('[data-act="flowNext"]')) break;
-    if (await p.$('[data-act="reveal"]')) { await p.click('[data-act="reveal"]'); await p.waitForTimeout(200); await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(200); }
+    if (await p.$('.rev-card [data-w]') || await p.$('.rev-card')) { await revAnswer(p); }
     else if (await p.$('.qopt:not([disabled])')) { await p.locator('.qopt:not([disabled])').first().click(); await p.waitForTimeout(200); }
     else if (await p.$('[data-act="rqnext"]')) { await p.click('[data-act="rqnext"]'); await p.waitForTimeout(200); }
     else await p.waitForTimeout(150);
@@ -162,7 +170,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   st = await state();
   const old1 = st.words[id(1)], w0 = st.words[id(0)];
   check('after the review the next step is offered: new words', fb1 === '下一步：学一组新词', String(fb1));
-  check('old 6-field records are graded normally', old1.length === 8 && old1[0] === 3 && old1[1] === seed.t + 7 && old1[6] === 2, JSON.stringify(old1));
+  check('old 6-field records are reviewed normally (converted to an FSRS card)', Array.isArray(old1[10]) && old1[10][3] === 2 && old1[1] > seed.t && old1[6] === 2 && old1[5] === seed.t - 5, JSON.stringify(old1));
   check('grading 认识 in review removes the word from the error book', w0[6] === 2, JSON.stringify(w0));
   await p.screenshot({ path: OUT + tag + '-flow-next.png' });
   await p.click('[data-act="flowNext"]'); await p.waitForSelector('.session'); await p.waitForTimeout(400);

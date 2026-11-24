@@ -78,9 +78,20 @@ const OUT = require('path').join(__dirname, 'shots') + '/'; require('fs').mkdirS
   console.log('learned after session:', learned);
   // 让这些词今天到期，测试复习
   await page.goto('http://127.0.0.1:8765/bukit.html?mkdue=1#review'); await page.waitForSelector('[data-act="revStart"]'); await page.waitForTimeout(500); await shot('m-review-start');
-  await page.click('[data-act="revStart"]'); await shot('m-review-front');
-  await page.click('[data-act="reveal"]'); await shot('m-review-back');
-  for (let i = 0; i < 12; i++) { const g = await page.$('[data-act="grade"][data-v="2"]'); if (!g) { const r = await page.$('[data-act="reveal"]'); if (r) { await r.click(); continue; } break; } await g.click(); await page.waitForTimeout(80); }
+  // 复习打字卡：打出正确答案再“继续”；不能打字的词点“看答案”
+  const revAnswer = async (pg, skip) => {
+    const w = await pg.evaluate(() => { const c = document.querySelector('.rev-card'); return c && document.querySelector('[data-act="revSkip"]') ? WORDS[c.dataset.w].w : null; });
+    if (!w) return false;
+    if (!skip && await pg.$('#rev-in')) { await pg.fill('#rev-in', w); await pg.keyboard.press('Enter'); } else await pg.click('[data-act="revSkip"]');
+    await pg.waitForTimeout(120); await pg.click('[data-act="revNext"]'); await pg.waitForTimeout(120);
+    return true;
+  };
+  await page.click('[data-act="revStart"]'); await page.waitForSelector('.rev-card'); await shot('m-review-front');
+  for (let i = 0; i < 24; i++) {
+    if (await page.$('.qopts .qopt:not([disabled])') && !(await page.$('.rev-card'))) { await page.locator('.qopt').first().click(); await page.waitForTimeout(100); await page.click('[data-act="rqnext"]'); continue; }
+    if (i === 1) { const w = await page.evaluate(() => WORDS[document.querySelector('.rev-card').dataset.w].w); await page.fill('#rev-in', w); await page.keyboard.press('Enter'); await page.waitForTimeout(150); await shot('m-review-back'); await page.click('[data-act="revNext"]'); continue; }
+    if (!(await revAnswer(page))) break;
+  }
   await shot('m-review-done');
   await page.click('#nav a[data-nav="pron"]'); await shot('m-pron');
   await page.click('.ltile >> nth=2'); await page.waitForTimeout(100);

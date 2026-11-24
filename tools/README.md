@@ -118,3 +118,11 @@ MMS 直接读单个词很不准（Whisper 识别错误率 66.5%），放进句�
 - 易混词在 `src/confuse.js`：`CF({ id, k, t, tip, w })`，`k` 是 s 拼写相近 / c 同一类 / u 用法不同，`w` 里每个词是课程词表的键加一句区分说明，中文释义直接用课程里的。文件末尾从这些数据生成三张速查表。`app.js` 里 `cfOf()`、`cfMates()` 查一个词所在的组；`makeOpts()` 出选择题时先放 1–2 个易混词当干扰项。
 - `node tools/check-confuse.js`：检查每个词都在课程里、都有一句把这个词本身标出来的例句（“易混辨析”要挖空）。
 测试：`node tools/test-study.js`。
+
+## 词条扩展、FSRS、客观自动评分（2026-11-24）
+- **词条字段**：`src/lexicon.js` 用 `LEX(词的键, { rootWord, colloquial, clozeSentence })` 补充或覆盖；`pre.js` 的 `applyLexicon()` 在页面启动时给每个 `WORDS[id]` 补齐三个字段（词根默认是词本身，口语形式默认 `[]`，挖空短句默认取第一句把词本身标出来的例句，提示默认是中文释义）。`entryOf(id)` 返回词条加上个人的 `srs`（FSRS 卡片）。检查：`node tools/check-lexicon.js`。
+- **FSRS**：`vendor/ts-fsrs.js` 是 ts-fsrs 5.4.2 的 UMD 构建，构建时放在最前面，挂到全局 `FSRS`。没用 CDN，是因为离线版不能联网；没用 6.x，是因为 6.0 刚发布、接口改成了异步。参数：保留率 0.9、最长间隔 36500 天、加随机扰动、不用分钟级学习步。评 1 分时不管 FSRS 算出几天都改成明天（当天的重来交给复习页的本轮错题队列）。
+- **学习记录**：FSRS 卡片存在每条记录的第 10 项（紧凑数组），前 10 项照旧，并在每次排程后同步更新（到期日、等级、上次反馈……），所以首页、错词本、同步、备份都不用改。没有第 10 项的旧记录在第一次复习时换算：复习过的变成 Review 卡（stability = 原来的间隔），没复习过的变成 New 卡。函数都在 `src/srs.js`：`cardFromRecord()`、`recordWithCard()`、`srsReview()`、`srsNewRecord()`。
+- **自动评分** `evaluateAttempt({ attempts, hintsUsed, skipped, correct, reactionTimeMs, target })` → `{ rating 1–4, requeue, thinkMs, reason }`。打字补偿每个字母 0.3 秒；阈值在 `EVAL` 里。
+- **复习页**：挖空短句 + 输入框 + 提示 + 看答案；错两次直接给答案。1 分的词排到本轮末尾再考一次，那次只练不计入 FSRS；“再过一遍没想起来的”也不计入。
+测试：`node tools/test-srs.js`（Node，不需要浏览器）、`node tools/test-recall.js`。

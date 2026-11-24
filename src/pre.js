@@ -34,3 +34,27 @@ function TOPIC(t) {
 function DECK(id, zh, idn, cards, quiz) {
   DECKS[id] = { id, zh, idn, cards, quiz: quiz || [] };
 }
+
+/* ===== 词条的扩展字段：词根、口语形式、挖空短句（数据在 lexicon.js） =====
+   LEX(词的键, { rootWord, colloquial, clozeSentence })，只写需要补充或覆盖的部分。
+   applyLexicon() 在所有内容加载完后调用一次，给每个词条补齐三个字段：
+     rootWord       词根；没写的就是词本身
+     colloquial     口语里的缩写或变体（数组），没有就是 []
+     clozeSentence  { id: 带 [挖空] 标记的短句, zh: 中文, hint: 中文语境提示 }；
+                    没写的取第一句把这个词本身标出来的例句，提示用这个词的中文释义 */
+const LEXICON = {};
+function LEX(id, o) { LEXICON[id] = Object.assign(LEXICON[id] || {}, o); }
+function applyLexicon() {
+  Object.keys(WORDS).forEach(id => {
+    const w = WORDS[id], x = LEXICON[id] || {};
+    w.rootWord = x.rootWord || w.w;
+    w.colloquial = Array.isArray(x.colloquial) ? x.colloquial.slice() : [];
+    let cz = x.clozeSentence || null;
+    if (!cz) {
+      const same = e => { const m = e.id.match(/\[([^\]]+)\]/); return m && m[1].toLowerCase() === w.w.toLowerCase(); };
+      const e = w.ex.find(same) || w.ex.find(e => /\[[^\]]+\]/.test(e.id)) || null;
+      if (e) cz = { id: e.id, zh: e.zh };
+    }
+    w.clozeSentence = cz ? { id: cz.id, zh: cz.zh, hint: cz.hint || w.zh } : null;
+  });
+}

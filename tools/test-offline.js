@@ -134,9 +134,21 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   // 复习
   // 地址里带 ?mkdue 的这一次打开：读进度时把词都改成今天到期（之后换回原地址就不再改）
   await page.goto(URL0 + '?mkdue=1#review'); await page.waitForSelector('[data-act="revStart"]'); await page.waitForTimeout(300);
-  await page.click('[data-act="revStart"]'); await page.click('[data-act="reveal"]'); await shot('off-review');
-  for (let i = 0; i < 40; i++) { const g = await page.$('[data-act="grade"][data-v="2"]'); if (!g) { const r = await page.$('[data-act="reveal"]'); if (r) { await r.click(); continue; } break; } await g.click(); await page.waitForTimeout(80); }
-  check('review session completes', !(await page.$('[data-act="grade"]')));
+  // 复习打字卡：打出正确答案再“继续”；不能打字的词点“看答案”
+  const revAnswer = async (pg, skip) => {
+    const w = await pg.evaluate(() => { const c = document.querySelector('.rev-card'); return c && document.querySelector('[data-act="revSkip"]') ? WORDS[c.dataset.w].w : null; });
+    if (!w) return false;
+    if (!skip && await pg.$('#rev-in')) { await pg.fill('#rev-in', w); await pg.keyboard.press('Enter'); } else await pg.click('[data-act="revSkip"]');
+    await pg.waitForTimeout(120); await pg.click('[data-act="revNext"]'); await pg.waitForTimeout(120);
+    return true;
+  };
+  await page.click('[data-act="revStart"]'); await page.waitForSelector('.rev-card'); await shot('off-review');
+  for (let i = 0; i < 40; i++) {
+    if (await page.$('.qopts .qopt:not([disabled])') && !(await page.$('.rev-card'))) { await page.locator('.qopt').first().click(); await page.waitForTimeout(100); await page.click('[data-act="rqnext"]'); continue; }
+    if (!(await revAnswer(page))) break;
+  }
+  const revEnd = await page.evaluate(() => document.querySelector('#main').innerText);
+  check('review session completes (typing card, automatic rating)', /这一轮结束/.test(revEnd) && !(await page.$('[data-act="grade"], [data-act="reveal"]')), revEnd.replace(/\s+/g, ' ').slice(0, 80));
 
   // 发音页
   await page.click('#nav a[data-nav="pron"]'); await page.waitForTimeout(400);

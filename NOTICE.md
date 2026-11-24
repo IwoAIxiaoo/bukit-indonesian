@@ -30,6 +30,10 @@ MSWC 是从 **Mozilla Common Voice** 志愿者朗读的句子中，用强制对�
 
 字体文件取自 [Fontsource](https://fontsource.org/)。
 
+## 复习排程算法
+
+复习间隔用 **FSRS**（Free Spaced Repetition Scheduler）算法计算，代码是 [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) 5.4.2，**MIT** 许可，© Open Spaced Repetition。`vendor/ts-fsrs.js` 是 npm 包 `ts-fsrs@5.4.2` 里 `dist/index.umd.js` 的原样副本（只去掉了最后一行 source map 引用），许可全文在 `vendor/ts-fsrs.LICENSE`。构建时打进页面，离线版因此不需要联网。
+
 ## 参考过的做法
 
 “今日学习”把复习、新词、默写串成一次，以及错词本、跟打、听写、句子连播和跟读、短文阅读这几种练习形式，参考了开源项目 [TypeWords](https://github.com/zyronon/TypeWords)（GPL-3.0）的功能思路。本仓库**没有使用、也没有改写它的任何代码或素材**，这些功能都是另行实现的。

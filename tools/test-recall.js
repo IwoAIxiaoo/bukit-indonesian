@@ -1,4 +1,5 @@
-// 主动回忆式复习测试。用法：node test-recall.js <url> [offline]
+// 复习打字卡测试：挖空短句出题、打字作答、客观自动评分（evaluateAttempt）、FSRS 排程、本轮错题队列。
+// 默认测离线版；测在线版：node tools/test-recall.js http://127.0.0.1:8765/bukit.html
 const { chromium } = require('playwright');
 const URL0 = process.argv[2] || 'file://' + require('path').join(__dirname, '..', 'bukit-offline.html');
 const OFF = process.argv[3] === 'offline' || URL0.startsWith('file:');
@@ -11,149 +12,144 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
   if (OFF) await ctx.setOffline(true);
   await ctx.addInitScript(() => {
-    const sh = +(sessionStorage.getItem('shift') || 0);
-    if (sh) { const o = Date.now.bind(Date); Date.now = () => o() + sh; }   // 模拟“过了一段时间”
-    window.__tts = 0; window.__plays = [];
+    // 用 window.__shift 模拟“过了多久”：作答前加几秒就是“想了这么久”
+    window.__shift = +(sessionStorage.getItem('shift') || 0);
+    const o = Date.now.bind(Date); Date.now = () => o() + window.__shift;
+    window.__tts = 0;
     try { const orig = speechSynthesis.speak.bind(speechSynthesis); speechSynthesis.speak = u => { window.__tts++; return orig(u); }; } catch (e) {}
-    const op = HTMLMediaElement.prototype.play;
-    HTMLMediaElement.prototype.play = function () { if ((this.src || '').length > 2000) window.__plays.push((this.src || '').length); return op.call(this); };
   });
   const p = await ctx.newPage(); const errs = [], net = [];
   p.on('pageerror', e => errs.push(e.message));
   p.on('request', r => { const u = r.url(); if (OFF && !/^(file|data|blob):/.test(u)) net.push(u); });
   await p.route(/fonts\./, r => r.abort());
-  await p.goto(URL0 + '#home'); await p.waitForSelector('#nav a[data-nav="learn"]'); await p.waitForTimeout(500);
-
-  // 造一份学习记录：C 上次不认识（再考时间已过）、B 上次模糊、D 旧格式且过期 3 天、A 过期 1 天、16 个普通到期词、W 还在等 10 分钟、N 两天后到期
+  const boot = async () => { await p.waitForSelector('#nav a[data-nav="learn"]'); await p.waitForTimeout(400); };
+  await p.goto(URL0 + '#home'); await boot();
+  // 20 个今天到期的旧记录（没有 FSRS 卡片，测换算）：tidak 上次不认识，排第一；一个旧的 6 项记录；还有一个 2 天后到期的
   const seed = await p.evaluate(() => {
     const t = Math.floor((Date.now() - new Date().getTimezoneOffset() * 6e4) / 864e5), now = Date.now(), old = now - 2 * 864e5;
-    const ws = TOPICS[0].words.concat(TOPICS[1].words).filter(w => w.ex.length >= 2 && /\[/.test(w.ex[0].id) && /\[/.test(w.ex[1].id)).slice(0, 22);
-    const id = k => ws[k].id, words = {};
-    words[id(0)] = [3, t - 1, old, 2, 0, t - 20, 2, 0];                 // A
-    words[id(1)] = [2, t, old, 2, 0, t - 20, 1, 0];                     // B 模糊
-    words[id(2)] = [1, t, old, 4, 1, t - 20, 0, now - 1000];            // C 不认识，再考时间已过
-    words[id(3)] = [1, t - 3, old, 0, 0, t - 20];                       // D 旧格式
-    for (let k = 4; k < 20; k++) words[id(k)] = [2, t, old, k % 2, 0, t - 20, 2, 0];   // E：一半轮到“例句挖空”
-    words[id(20)] = [1, t, now - 6e4, 3, 1, t - 20, 0, now + 5 * 6e4];  // W 等待中
-    words[id(21)] = [3, t + 2, old, 2, 0, t - 20, 2, 0];                // N 快到期
+    const ws = TOPICS[0].words.concat(TOPICS[1].words).filter(w => w.id !== 'tidak' && /^[a-z]+$/i.test(w.w)).slice(0, 19);
+    const words = {};
+    words.tidak = [2, t, old, 3, 1, t - 20, 0, 0];
+    ws.forEach((w, k) => { words[w.id] = k === 0 ? [1, t - 3, old, 2, 0, t - 20] : [2 + (k % 3), t, old, 2 + k % 4, 0, t - 20, 2, 0]; });
+    words[TOPICS[2].words[0].id] = [3, t + 2, old, 2, 0, t - 20, 2, 0];
     localStorage.setItem('bukit.v1', JSON.stringify({ words, log: {}, prefs: { goal: 10, batch: 8, interests: [], decks: {}, tips: {}, last: '', t: now }, saved: {}, flags: {} }));
-    Storage.prototype.setItem = function () {};   // 防止离开页面时旧状态把它盖掉
-    return { t, ids: ws.map(w => w.id), w: ws.map(w => w.w), zh: ws.map(w => w.zh), exN: ws.map(w => w.ex.length) };
+    Storage.prototype.setItem = function () {};
+    return { t, old6: ws[0].id };
   });
-  await p.reload(); await p.waitForSelector('#nav a[data-nav="learn"]'); await p.waitForTimeout(500);
-  const st = () => p.evaluate(() => JSON.parse(localStorage.getItem('bukit.v1')).words);
-  const save = () => p.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
+  await p.reload(); await boot();
+  const rec = async () => { await p.evaluate(() => window.dispatchEvent(new Event('pagehide'))); return p.evaluate(() => JSON.parse(localStorage.getItem('bukit.v1')).words); };
+  const card = () => p.evaluate(() => {
+    const c = document.querySelector('.rev-card'); if (!c) return null;
+    const w = WORDS[c.dataset.w];
+    return { id: w.id, w: w.w, letters: (w.w.match(/\p{L}/gu) || []).length, blank: !!c.querySelector('.blank'), shown: c.innerText.toLowerCase().includes(w.w.toLowerCase()), input: !!document.querySelector('#rev-in'), again: /再来一次/.test(c.innerText), count: document.querySelector('.s-count').textContent };
+  });
+  const result = () => p.evaluate(() => { const r = document.querySelector('.rev-res'); return r ? { txt: r.innerText.replace(/\s+/g, ' '), cls: r.className } : null; });
+  const answer = async (text) => { await p.fill('#rev-in', text); await p.keyboard.press('Enter'); await p.waitForTimeout(200); };
+  const think = ms => p.evaluate(ms => { window.__shift += ms; }, ms);
 
-  const home = await p.evaluate(() => { const c = [...document.querySelectorAll('.card.action')].find(x => /今日复习/.test(x.textContent)); return { card: c ? c.textContent : '', streak: /连续天数/.test(document.body.innerText) }; });
-  check('home card: 20 due, weak ones mentioned, waiting word mentioned', /20 个词到期/.test(home.card) && /2 个上次选了/.test(home.card) && /1 个不认识的词在等/.test(home.card), home.card);
-  check('streak display is still there', home.streak);
+  // ---- 复习页和首页：没有自评按钮
+  const land = await p.evaluate(() => { location.hash = 'review'; return null; }).then(() => p.waitForTimeout(300)).then(() => p.evaluate(() => document.querySelector('#main').innerText.replace(/\s+/g, ' ')));
+  check('review page explains automatic rating and FSRS; 20 due', /自动|不用自己评分/.test(land) && /FSRS/.test(land) && /20 个词到期/.test(land), land.slice(0, 120));
+  await p.click('[data-act="revStart"]'); await p.waitForSelector('.rev-card'); await p.waitForTimeout(200);
 
-  await p.click('#nav a[data-nav="review"]'); await p.waitForTimeout(300);
-  const land = await p.evaluate(() => ({ txt: document.querySelector('#main').innerText, anim: getComputedStyle(document.querySelector('.btn')).transitionDuration }));
-  check('review page: due count, waiting section, early-review section', /20 个词到期/.test(land.txt) && /等待再考/.test(land.txt) && /提前复习 1 个/.test(land.txt), land.txt.replace(/\s+/g, ' ').slice(0, 160));
-  await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-landing.png', fullPage: true });
-  await p.click('[data-act="revStart"]'); await p.waitForTimeout(400);
-
-  const front = () => p.evaluate(() => { const f = document.querySelector('.flash'); return { txt: f.innerText, word: !!f.querySelector('.w-word'), blank: !!f.querySelector('.blank'), zh: (f.querySelector('.zh-big') || {}).textContent, plays: window.__plays.length, reveal: !!document.querySelector('[data-act="reveal"]'), grades: document.querySelectorAll('[data-act="grade"]').length }; });
-  const back = () => p.evaluate(() => { const f = document.querySelector('.flash'); return { word: (f.querySelector('.w-word') || {}).textContent, ipa: (f.querySelector('.w-ipa') || {}).textContent, zh: (f.querySelector('.w-zh') || {}).textContent, ex: f.querySelectorAll('.exs .ex').length, exSay: f.querySelectorAll('.exs .ex .say').length, marks: f.querySelectorAll('.exs mark.hl').length, plays: window.__plays.length, grades: [...document.querySelectorAll('[data-act="grade"]')].map(x => x.textContent.replace(/\s+/g, ' ').trim()) }; });
-  const K = k => seed.ids.indexOf(seed.ids[k]);
-
-  // 第 1 张应该是 C（上次不认识）
-  let f = await front();
-  check('first card is the word marked 不认识 last time; only Chinese shown, no audio', f.zh === seed.zh[2] && !f.word && f.plays === 0 && f.reveal && f.grades === 0 && !f.txt.includes(seed.w[2]), JSON.stringify(f).slice(0, 160));
+  // 1) tidak：上次不认识，排第一；打口语形式 gak，又快又对
+  let c = await card();
+  const ui = await p.evaluate(() => ({ grades: document.querySelectorAll('[data-act="grade"], .grades').length, reveal: !!document.querySelector('[data-act="reveal"]'), hint: !!document.querySelector('[data-act="revHint"]'), skip: !!document.querySelector('[data-act="revSkip"]') }));
+  check('card: cloze sentence with a blank, the word itself hidden, a text box, 提示 and 看答案; no self-grading buttons', c.id === 'tidak' && c.blank && !c.shown && c.input && ui.hint && ui.skip && !ui.grades && !ui.reveal, JSON.stringify([c, ui]));
   await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-front.png' });
-  await p.click('[data-act="reveal"]'); await p.waitForTimeout(700);
-  let bk = await back();
-  check('reveal: word, IPA, meaning, every example with highlight and play button, word read aloud', bk.word === seed.w[2] && !!bk.ipa && bk.zh === seed.zh[2] && bk.ex === seed.exN[2] && bk.exSay === bk.ex && bk.marks >= bk.ex && bk.plays === 1, JSON.stringify(bk).slice(0, 200));
-  check('three feedback buttons; retry card shows 10 分钟后 / 明天 / 明天', bk.grades.length === 3 && /^不认识 ?10 分钟后$/.test(bk.grades[0]) && /^模糊 ?明天$/.test(bk.grades[1]) && /^认识 ?明天$/.test(bk.grades[2]), JSON.stringify(bk.grades));
+  await answer('gak');
+  let r = await result();
+  check('colloquial form counts as right, with the standard spelling shown; fast → 4 极熟练', /口语说法/.test(r.txt) && /tidak/.test(r.txt) && /极熟练/.test(r.txt) && /4 分/.test(r.txt), r.txt);
   await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-back.png', fullPage: true });
-  await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(250);
+  await p.keyboard.press('Enter'); await p.waitForTimeout(200);
 
-  // 第 2 张：B（上次模糊，2 级）
-  f = await front();
-  await p.keyboard.press(' '); await p.waitForTimeout(500);
-  bk = await back();
-  check('second card is the 模糊 word; labels: same interval 3 天后, longer 7 天后', f.zh === seed.zh[1] && bk.word === seed.w[1] && /10 分钟后/.test(bk.grades[0]) && /模糊 ?3 天后/.test(bk.grades[1]) && /认识 ?7 天后/.test(bk.grades[2]), JSON.stringify(bk.grades));
-  await p.keyboard.press('2'); await p.waitForTimeout(250);
-
-  // 第 3 张：D（过期最久），选不认识；第 4 张：A，选认识
-  f = await front(); const third = f.zh;
-  await p.click('[data-act="reveal"]'); await p.waitForTimeout(300); await p.click('[data-act="grade"][data-v="0"]'); await p.waitForTimeout(250);
-  f = await front(); const fourth = f.zh;
-  await p.click('[data-act="reveal"]'); await p.waitForTimeout(300); await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(250);
-  check('then by how overdue: D (3 days) before A (1 day)', third === seed.zh[3] && fourth === seed.zh[0], third + ' / ' + fourth);
-  await save();
-  let w = await st();
-  const A = w[seed.ids[0]], B = w[seed.ids[1]], C = w[seed.ids[2]], D = w[seed.ids[3]], t = seed.t;
-  check('认识 on a level-3 word: level 4, due in 14 days', A[0] === 4 && A[1] === t + 14 && A[6] === 2 && !A[7], JSON.stringify(A));
-  check('模糊 keeps the interval: level 2, due in 3 days, marked weak', B[0] === 2 && B[1] === t + 3 && B[6] === 1, JSON.stringify(B));
-  check('retry answered: level 1, due tomorrow, still marked weak, timer cleared', C[0] === 1 && C[1] === t + 1 && C[6] === 1 && C[7] === 0, JSON.stringify(C));
-  check('不认识 resets: level 1, retry in about 10 minutes, counted once', D[0] === 1 && D[1] === t && D[6] === 0 && D[4] === 1 && Math.abs(D[7] - Date.now() - 600000) < 30000, JSON.stringify(D));
-
-  // 接下来 6 张普通卡，其中应有“例句挖空”
-  let cloze = 0, clozeOk = true;
-  for (let k = 0; k < 6; k++) {
-    f = await front();
-    if (f.blank) { cloze++; const i = seed.zh.findIndex((z, j) => j >= 4 && f.txt.includes('____') === false && true); }
-    const before = f;
-    await p.click('[data-act="reveal"]'); await p.waitForTimeout(350);
-    bk = await back();
-    if (before.blank) { if (before.word || before.txt.toLowerCase().includes(bk.word.toLowerCase() + ' ') && false) clozeOk = false; if (bk.marks < 1) clozeOk = false; }
-    if (k === 0 && before.blank) await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-cloze.png' });
-    await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(250);
-    if (await p.$('.qopts')) break;
+  const plan = [];   // 记下每张卡怎么答的，最后核对记录
+  // 2) 用提示 → 2
+  c = await card(); await p.click('[data-act="revHint"]'); await p.waitForTimeout(100);
+  const hintTxt = await p.evaluate(() => (document.querySelector('.rev-hint') || {}).textContent || '');
+  await answer(c.w); r = await result();
+  check('hint shows the first letter and length; using it → 2 模糊', /首字母/.test(hintTxt) && /模糊/.test(r.txt) && /用了提示/.test(r.txt), hintTxt + ' | ' + r.txt);
+  plan.push([c.id, 2]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(200);
+  // 3) 错一次再对 → 2
+  c = await card(); await answer('zzzz');
+  const why = await p.evaluate(() => (document.querySelector('.why') || {}).textContent || '');
+  await answer(c.w); r = await result();
+  check('first wrong answer: try again message; right on the 2nd try → 2', /再试一次/.test(why) && /模糊/.test(r.txt) && /第 2 次/.test(r.txt), why + ' | ' + r.txt);
+  plan.push([c.id, 2]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(200);
+  // 4) 想得久（扣除打字补偿后 > 10 秒）→ 2
+  c = await card(); await think(c.letters * 300 + 12000); await answer(c.w); r = await result();
+  check('slow (over 10 s after the typing allowance) → 2', /模糊/.test(r.txt) && /想了比较久/.test(r.txt), r.txt);
+  plan.push([c.id, 2]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(200);
+  // 5) 正常速度 → 3
+  c = await card(); await think(c.letters * 300 + 7000); await answer(c.w); r = await result();
+  check('normal speed (7 s after the allowance) → 3 认识', /认识（3 分/.test(r.txt), r.txt);
+  plan.push([c.id, 3]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(200);
+  // 6) 看答案 → 1，排到本轮末尾
+  c = await card(); const skipId = c.id; await p.click('[data-act="revSkip"]'); await p.waitForTimeout(200); r = await result();
+  check('看答案 → 1 不认识, next review tomorrow, again at the end of this round', /不认识/.test(r.txt) && /看了答案/.test(r.txt) && /明天/.test(r.txt) && /最后再考一次/.test(r.txt), r.txt);
+  plan.push([c.id, 1]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(200);
+  // 7) 错两次 → 自动给答案，1
+  c = await card(); const twiceId = c.id; await answer('zzzz'); await answer('yyyy'); r = await result();
+  const shownAfter = await p.evaluate(() => (document.querySelector('.rev-card .w-word') || {}).textContent);
+  check('two wrong answers → answer shown automatically, 1', /不认识/.test(r.txt) && /拼错了 1 次|两次都不对/.test(r.txt) && shownAfter === c.w, r.txt);
+  plan.push([c.id, 1]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(200);
+  // 8) 旧 6 项记录也能复习：卡片会轮到它，正常答对
+  // 其余的都正常速度答对；第 10 张后插一道选择题
+  let quiz = null;
+  for (let k = 0; k < 30; k++) {
+    if (await p.$('.qopts .qopt:not([disabled])') && !(await p.$('.rev-card'))) {
+      quiz = quiz || await p.evaluate(() => ({ head: document.querySelector('.session .eyebrow:last-of-type') ? document.querySelector('.session').innerText : '', n: document.querySelectorAll('.qopt').length }));
+      // 选对：听音题按读的词找，填空题按例句找（答错会把那个词标成没记牢，影响后面的核对）
+      const right = await p.evaluate(() => {
+        const opts = [...document.querySelectorAll('.qopt')].map(o => o.dataset.v), say = document.querySelector('.qprompt .bigplay'), cz = document.querySelector('.qprompt .cloze');
+        if (say) return opts.find(v => WORDS[v].w === say.dataset.say);
+        if (cz) { const z = document.querySelector('.qprompt .ex-zh').textContent, t = cz.textContent; return opts.find(v => WORDS[v].ex.some(e => e.zh === z && e.id.replace(/\[[^\]]+\]/g, '') === t)); }
+        const ww = document.querySelector('.qprompt .w-word'); return opts.find(v => ww && WORDS[v].w === ww.textContent);
+      });
+      await p.locator('.qopt[data-v="' + String(right).replace(/"/g, '\\"') + '"]').click(); await p.waitForTimeout(150); await p.click('[data-act="rqnext"]'); await p.waitForTimeout(150); continue;
+    }
+    c = await card(); if (!c) break;
+    if (c.again) break;   // 到了本轮末尾的错题
+    await think(c.letters * 300 + 7000); await answer(c.w);
+    plan.push([c.id, 3]); await p.click('[data-act="revNext"]'); await p.waitForTimeout(150);
   }
-  check('some cards use a sentence with the word blanked out', cloze >= 1 && clozeOk, cloze + ' cloze cards in the first batch');
-
-  // 第 10 张答完后插入选择题：听音选中文
-  const q1 = await p.evaluate(() => ({ head: (document.querySelector('.session .eyebrow') || {}).textContent, big: !!document.querySelector('.qprompt .bigplay'), opts: [...document.querySelectorAll('.qopt')].map(x => x.textContent), word: !!document.querySelector('.qprompt .w-word'), counter: document.querySelector('.s-count').textContent }));
-  await p.waitForTimeout(600);
-  const q1plays = await p.evaluate(() => window.__plays.length);
-  check('after 10 cards a multiple-choice appears: listen and pick the Chinese meaning', /选择题/.test(q1.head || '') && q1.big && q1.opts.length === 4 && !q1.word && q1.opts.every(o => /[一-鿿]/.test(o)) && /^11\/20$/.test(q1.counter), JSON.stringify(q1));
-  await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-quiz1.png' });
-  await p.keyboard.press('1'); await p.waitForTimeout(500);
-  const a1 = await p.evaluate(() => ({ right: document.querySelectorAll('.qopt.right').length, disabled: [...document.querySelectorAll('.qopt')].every(x => x.disabled), why: (document.querySelector('.why') || {}).textContent, next: !!document.querySelector('[data-act="rqnext"]') }));
-  check('quiz shows the right answer and waits for 继续', a1.right === 1 && a1.disabled && !!a1.why && a1.next, JSON.stringify(a1));
-  await p.keyboard.press('Enter'); await p.waitForTimeout(300);
-
-  // 后 10 张全部选认识，然后是第二道选择题：句子填空
-  for (let k = 0; k < 10; k++) { if (await p.$('.qopts')) break; await p.click('[data-act="reveal"]'); await p.waitForTimeout(200); await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(200); }
-  const q2 = await p.evaluate(() => ({ blank: !!document.querySelector('.qprompt .cloze .blank'), zh: (document.querySelector('.qprompt .ex-zh') || {}).textContent, opts: [...document.querySelectorAll('.qopt')].map(x => ({ t: x.textContent, v: x.dataset.v })) }));
-  check('second multiple-choice: Indonesian sentence with a blank, pick the word', q2.blank && !!q2.zh && q2.opts.length === 4, JSON.stringify(q2).slice(0, 200));
-  await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-quiz2.png' });
-  // 故意选错：找出正确项之外的一个
-  const target = await p.evaluate(() => { const o = [...document.querySelectorAll('.qopt')]; o[0].click(); return null; });
-  await p.waitForTimeout(400);
-  const a2 = await p.evaluate(() => ({ right: (document.querySelector('.qopt.right') || {}).dataset ? document.querySelector('.qopt.right').dataset.v : '', wrong: document.querySelector('.qopt.wrong') ? document.querySelector('.qopt.wrong').dataset.v : '', filled: !!document.querySelector('.qprompt .cloze mark.hl') }));
-  await save(); w = await st();
-  const tw = w[a2.right];
-  check('fill-in quiz reveals the sentence; a wrong pick only marks the word weak', a2.filled && (a2.wrong ? tw[6] === 1 && tw[0] === 3 && tw[1] === t + 7 : tw[6] === 2), JSON.stringify({ a2, tw }));
-  await p.click('[data-act="rqnext"]'); await p.waitForTimeout(300);
-
+  check('a multiple-choice question is still mixed in after 10 cards', !!quiz && /选择题/.test(quiz.head) && quiz.n === 4, JSON.stringify(quiz).slice(0, 80));
+  // 本轮末尾：两个 1 分的词再练一次，不改记录
+  let w0 = await rec();
+  const again = [];
+  for (let k = 0; k < 3; k++) {
+    c = await card(); if (!c || !c.again) break;
+    again.push(c.id); await answer(c.w); r = await result();
+    if (!/这次只练/.test(r.txt)) again.push('graded!');
+    await p.click('[data-act="revNext"]'); await p.waitForTimeout(150);
+  }
+  let w1 = await rec();
+  check('end of round: the two missed words come back once, practice only (records unchanged)', again.length === 2 && again.includes(skipId) && again.includes(twiceId) && JSON.stringify(w0[skipId]) === JSON.stringify(w1[skipId]) && JSON.stringify(w0[twiceId]) === JSON.stringify(w1[twiceId]), JSON.stringify(again));
   const done = await p.evaluate(() => document.querySelector('#main').innerText.replace(/\s+/g, ' '));
-  check('round summary: 20 words, 18 认识 / 1 模糊 / 1 不认识, missed word listed', /复习了 20 个词/.test(done) && /认识 18 · 模糊 1 · 不认识 1/.test(done) && done.includes(seed.w[3]) && /10 分钟后/.test(done), done.slice(0, 200));
+  const counts = { 4: 1, 3: plan.filter(x => x[1] === 3).length, 2: 3, 1: 2 };
+  check('summary: 20 words in four ratings, missed words listed', /复习了 20 个词/.test(done) && done.includes('极熟练 1 · 认识 ' + counts[3] + ' · 模糊 3 · 不认识 2') && /明天会再复习/.test(done), done.slice(0, 160));
   await p.screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-recall-done.png', fullPage: true });
-  await p.click('[data-act="revExit"]'); await p.waitForTimeout(300);
-  const land2 = await p.evaluate(() => document.querySelector('#main').innerText.replace(/\s+/g, ' '));
-  check('nothing due now; two words wait for their 10-minute retry', /现在没有到期的词/.test(land2) && /2 个刚才选了/.test(land2), land2.slice(0, 200));
 
-  // 11 分钟后：两个不认识的词回到复习里，排最前
-  await save();
-  await p.evaluate(() => sessionStorage.setItem('shift', String(11 * 60000)));
-  await p.reload(); await p.waitForSelector('#nav a[data-nav="learn"]'); await p.waitForTimeout(500);
-  const land3 = await p.evaluate(() => document.querySelector('#main').innerText.replace(/\s+/g, ' '));
-  check('11 minutes later both words are due again', /2 个词到期/.test(land3) && !/等待再考/.test(land3), land3.slice(0, 160));
-  await p.click('[data-act="revStart"]'); await p.waitForTimeout(300);
-  for (let k = 0; k < 2; k++) { await p.click('[data-act="reveal"]'); await p.waitForTimeout(200); await p.click('[data-act="grade"][data-v="2"]'); await p.waitForTimeout(200); }
-  await save(); w = await st();
-  const D2 = w[seed.ids[3]];
-  check('retry passed: due tomorrow at level 1; no quiz for a 2-card round', D2[0] === 1 && D2[1] === t + 1 && D2[7] === 0 && D2[4] === 1 && !(await p.$('.qopts')), JSON.stringify(D2));
-  // 提前复习
+  // ---- 记录
+  const t = seed.t;
+  const all = [['tidak', 4]].concat(plan);
+  const bad = all.filter(([id, g]) => { const s = w1[id]; return !Array.isArray(s[10]) || s[10].length !== 9 || s[6] !== (g === 1 ? 0 : g === 2 ? 1 : 2) || s[7] !== 0 || (g === 1 ? s[1] !== t + 1 : s[1] < t + 1); });
+  check('every reviewed word now has an FSRS card (item 10) and updated old fields', bad.length === 0 && all.length === 20, JSON.stringify(bad.slice(0, 2).map(([id]) => [id, w1[id]])));
+  check('old 6-item record was converted and reviewed', Array.isArray(w1[seed.old6][10]) && w1[seed.old6][3] === 3, JSON.stringify(w1[seed.old6]));
+  const lapsed = w1[skipId];
+  check('a 1-rating counts a lapse and lowers the level', lapsed[4] === 1 && lapsed[0] <= 2, JSON.stringify(lapsed));
+
+  // ---- 再过一遍没想起来的：练习，不改 FSRS
+  await p.click('[data-act="revMissed"]'); await p.waitForSelector('.rev-card'); await p.waitForTimeout(150);
+  c = await card(); await answer(c.w); r = await result();
+  const w2 = await rec();
+  check('“再过一遍” is practice: no rating saved', /这次只练/.test(r.txt) && JSON.stringify(w2[c.id]) === JSON.stringify(w1[c.id]), r.txt);
   await p.click('[data-act="revExit"]'); await p.waitForTimeout(200);
-  const hasSoon = await p.$('[data-act="revSoon"]');
-  if (hasSoon) { await p.click('[data-act="revSoon"]'); await p.waitForTimeout(300); }
-  const early = hasSoon ? await front() : {};
-  check('early review offers the word due in 2 days', !!hasSoon && early.zh === seed.zh[21] || (early.blank && true), JSON.stringify(early).slice(0, 120));
+
+  // ---- 早复习：没到期的词也能用 FSRS 排
+  await p.evaluate(() => { location.hash = 'home'; }); await p.waitForTimeout(200); await p.evaluate(() => { location.hash = 'review'; }); await p.waitForTimeout(300);
+  const soon = await p.$('[data-act="revSoon"]');
+  check('early review is still offered for words due soon', !!soon);
 
   const ov = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check('no horizontal overflow', ov <= 0, String(ov));
