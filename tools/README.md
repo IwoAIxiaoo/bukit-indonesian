@@ -126,3 +126,11 @@ MMS 直接读单个词很不准（Whisper 识别错误率 66.5%），放进句�
 - **自动评分** `evaluateAttempt({ attempts, hintsUsed, skipped, correct, reactionTimeMs, target })` → `{ rating 1–4, requeue, thinkMs, reason }`。打字补偿每个字母 0.3 秒；阈值在 `EVAL` 里。
 - **复习页**：挖空短句 + 输入框 + 提示 + 看答案；错两次直接给答案。1 分的词排到本轮末尾再考一次，那次只练不计入 FSRS；“再过一遍没想起来的”也不计入。
 测试：`node tools/test-srs.js`（Node，不需要浏览器）、`node tools/test-recall.js`。
+
+## 今日学习成为唯一主入口（2026-11-24）
+- **流程**（`app.js` 的 `FLOW_STEPS`）：`review` 复习到期的旧词（打字卡）→ `study` 学一组新词 → `listen` 盲听短对话。首页只有 `flowCard()` 这一张主卡；原来“今日新词”“今日复习”“自由练习”三张入口卡去掉了（自由练习在复习页，今天的安排做完后主卡上也有入口）。
+- **学新词**（`startStudy()`）：每个词先自动播放 `clozeSentence` 的原句、再读这个词（`studySay()`），单词卡上显示词根和口语形式（`wordForms()`）；每 2 个词一次 `check`，题型 `ctx`：刚听过的句子挖空打字，只练不计分；最后一步 `srs` 把这一组交给复习打字卡（`startReview(ids, false, title, { alt: true, fromStudy })`），换一句没听过的例句，评分直接写进 FSRS，作为第一次复习。`learn()` 改用 `srsLearnRecord()`（New 卡，明天到期），不再有“3 小时后再见”（旧记录照常兼容）。
+- **盲听**：`pickDialog(今天新学的词)` 挑覆盖最多的一段对话（`dlgCovers()` 认原形、词组、口语形式和加了词缀的形式），`vListen()` 先只显示说话人和长度条，播放过才能“显示文字”。
+- **对话内容**：`src/dialogue-1.js`–`dialogue-3.js`，`DLG(课, 第几段, 标题, [[说话人, 印尼语, 中文]…])`。每课按词序每 8 个词一段（`dlgChunks()`），最后一段不足 4 个并入前一段。`node tools/check-dialogues.js` 检查每段对这一段词的覆盖率（要求 ≥ 60%）。音频在 `dlg-1`（第 1–10 课）、`dlg-2`（11–21 课）、`dlg-3`（22–31 课）三个包里，用 `gen_read.py` 生成。
+- **自由练习**：`PWARM` 四种选择题折叠进“辅助巩固 / 热身”；句子填空改成打字；`pracSrs()` 让句子填空、听写、拼写挑战对已学过的词按 `evaluateAttempt` 评分并写进 FSRS，同一个词当天已经复习过（卡片的上次复习是今天）就不再记。“句子与语感”的入口从自由练习里去掉，留在盲听页和短文页。
+测试：`node tools/test-today.js`；`test-study.js`、`test-sense.js`、`test-practice.js` 已按新流程更新。

@@ -109,7 +109,6 @@ const UI = { route: { name: 'home' }, sess: null, rev: null, q: '', lf: 'all', r
 
 /* ---------- 学习记录与间隔复习 ---------- */
 // 每个词一条记录（数组），各项的含义和 FSRS 卡片的存法见 srs.js 开头。复习排程用 FSRS（srsReview），评分由 evaluateAttempt 按答题表现自动算
-const AGAIN_MS = 10 * 60 * 1000;   // 学新词最后一轮还错的词，10 分钟后进复习
 const isWeak = s => s[6] === 0 || s[6] === 1;
 const isLearned = id => !!(S.words[id] && S.words[id][0] > 0);
 const learnedIds = () => Object.keys(S.words).filter(id => WORDS[id] && S.words[id][0] > 0);
@@ -169,8 +168,8 @@ function bump(f) {
 }
 function learn(id) {
   if (isLearned(id)) return false;
-  // 建一张 FSRS 新卡：3 小时后第一次复习（当天再见一次）；那时没来复习，明天照样到期
-  S.words[id] = srsNewRecord(S.words[id], Date.now(), NEW_SEE_MS);
+  // 建一张 FSRS 新卡，明天到期；学新词最后一轮的拼写会作为它的第一次 FSRS 复习（中途退出的话，明天照常复习）
+  S.words[id] = srsLearnRecord(S.words[id], Date.now());
   bump('n');
   Sync.mark('progress');
   return true;
@@ -824,6 +823,12 @@ function srcLine(w) {
     : '<span class="tag">合成语音</span>';
   return '<div class="w-src">' + src + '<button class="linkbtn' + (fl ? ' flagged' : '') + '" data-act="flag" data-id="' + esc(w.id) + '">' + (fl ? '已标记读音问题 · 取消' : '读音不对？标记一下') + '</button></div>';
 }
+// 词根（和词本身不同时才显示）、口语里的说法
+function wordForms(w) {
+  const root = w.rootWord && w.rootWord.toLowerCase() !== w.w.toLowerCase(), col = w.colloquial && w.colloquial.length;
+  if (!root && !col) return '';
+  return '<div class="w-forms">' + (root ? '<span class="tag">词根</span><b lang="id">' + esc(w.rootWord) + '</b>' : '') + (col ? '<span class="tag">口语</span><span lang="id">' + w.colloquial.map(esc).join('、') + '</span>' : '') + '</div>';
+}
 // 单词卡上的“容易混的词”：最多两组，组里的其他词可以点开
 function cfBlock(w) {
   const gs = cfOf(w.id).slice(0, 2);
@@ -849,6 +854,7 @@ function wordCard(w) {
     + '<div class="chips w-acts"><button class="chip" data-act="fav" data-id="' + esc(w.id) + '" aria-pressed="' + isFav(w.id) + '">' + (isFav(w.id) ? '已收藏' : '收藏') + '</button>'
     + '<button class="chip" data-act="known" data-id="' + esc(w.id) + '" aria-pressed="' + isKnown(w.id) + '">' + (isKnown(w.id) ? '已掌握 · 点一下恢复复习' : '已掌握，不再复习') + '</button></div>'
     + '<p class="w-zh">' + esc(w.zh) + '</p>'
+    + wordForms(w)
     + (w.note ? '<p class="w-note">' + esc(w.note) + '</p>' : '')
     + cfBlock(w)
     + '<ol class="exs">' + w.ex.map(e => exItem(e)).join('') + saved.map(e => exItem(e, { ai: true, wid: w.id })).join('') + '</ol>'
@@ -926,20 +932,6 @@ function vHome() {
     const ss = UI.sess, tt = TOPIC_BY[ss.tid];
     h += '<section class="card action"><div class="grow"><p class="eyebrow">学到一半</p><h3>' + esc(tt.zh) + '</h3><p class="sub">还有 ' + Math.max(0, ss.steps.length - ss.i) + ' 步没完成</p></div><a class="btn primary" href="#study">继续</a></section>';
   }
-  h += '<section class="card action"><div class="goal-ring">' + ringSVG(nNew / goal) + '<span class="num">' + nNew + '</span></div><div class="grow"><p class="eyebrow">今日新词 ' + nNew + ' / ' + goal + '</p>'
-    + (next ? '<h3>' + esc(next.zh) + '</h3><p class="sub">第 ' + next.n + ' 课 · 还有 ' + next.words.filter(w => !isLearned(w.id)).length + ' 个新词</p></div><button class="btn primary" data-act="study" data-t="' + next.id + '">学习</button>' : '<h3>课程里的词都学完了</h3><p class="sub">' + (OFFLINE ? '用复习继续巩固' : '用复习和 AI 例句继续巩固') + '</p></div>')
-    + '</section>';
-  // 今日复习：到期的词，上次没记牢的排最前
-  const weakDue = due.filter(id => isWeak(S.words[id])).length, wait = waitingIds().length, soon = due.length ? 0 : soonIds().length;
-  const nw = newWaitIds(), nwAt = nw.length ? Math.min.apply(null, nw.map(id => S.words[id][7])) : 0;
-  const nwTxt = nw.length ? ' 今天新学的 ' + nw.length + ' 个词' + hm(nwAt) + '以后再看一次。' : '';
-  if (due.length) {
-    h += '<section class="card action"><div class="goal-ring">' + ringSVG(nRev / (nRev + due.length)) + '<span class="num">' + due.length + '</span></div><div class="grow"><p class="eyebrow">今日复习</p><h3>' + due.length + ' 个词到期</h3><p class="sub">' + (weakDue ? weakDue + ' 个上次选了“模糊”或“不认识”，会先考。' : '看中文打出印尼语，自动评分。') + (wait ? ' 另有 ' + wait + ' 个不认识的词在等 10 分钟后再考。' : '') + nwTxt + '</p></div><a class="btn primary" href="#review">复习</a></section>';
-  } else if (learned) {
-    const nd = learnedIds().filter(id => !nw.includes(id)).map(id => S.words[id][1]).sort((a, b) => a - b)[0];
-    h += '<section class="card action"><div class="goal-ring">' + ringSVG(wait ? 0 : 1) + '<span>' + (wait ? '<span class="num">' + wait + '</span>' : ico('check')) + '</span></div><div class="grow"><p class="eyebrow">今日复习</p><h3>' + (wait ? wait + ' 个词等 10 分钟后再考' : '现在没有到期的词') + '</h3><p class="sub">' + (wait ? '刚才没记牢的词，过一会儿回来再考一次。' : nw.length ? '' : '下一批在' + (nd == null || nd - t <= 1 ? '明天' : ' ' + fmtDay(nd)) + '。') + nwTxt + (soon ? ' 有 ' + soon + ' 个快到期或没记牢的词可以提前复习。' : '') + '</p></div>' + (soon || wait ? '<a class="btn" href="#review">去看看</a>' : '') + '</section>';
-  }
-  h += '<section class="card action"><div class="grow"><p class="eyebrow">自由练习</p><h3>练单词，也练句子</h3><p class="sub">十种单词练习（选义、拼写、跟打、听写、易混辨析、限时模拟……），加上句子连播、影子跟读和组句。</p></div><button class="btn" data-act="pracHub">去练习</button></section>';
   const nRead = READS.filter(r => isRead(r.id)).length, nextRead = READS.find(r => !isRead(r.id));
   h += '<section class="card action"><div class="grow"><p class="eyebrow">短文阅读 · 已读 ' + nRead + ' / ' + READS.length + '</p><h3' + (nextRead ? ' lang="id"' : '') + '>' + (nextRead ? esc(nextRead.t) : '全部读完了') + '</h3><p class="sub">' + (nextRead ? esc(nextRead.zh) + ' · ' + esc(nextRead.kind) + ' · ' + nextRead.s.length + ' 句' : '可以回头再听一遍，或者用短文做跟读。') + '</p></div><a class="btn" href="#read' + (nextRead ? '-' + nextRead.id : '') + '">' + (nextRead ? '去读' : '看列表') + '</a></section>';
   const ts = todaySentence();
@@ -1003,7 +995,7 @@ function vTopic(id) {
 /* ---------- 学新词：每看 2 个词回想一次，最后整组再想一遍 ---------- */
 // 步骤：tip 文化贴士 / word 新词 / deck 语法卡片 / check 随堂回想 / cmp 易混词对比 / final 最后一轮
 const CHECK_EVERY = 2, CMP_MAX = 2;
-const isQuizStep = st => !!st && (st.type === 'check' || st.type === 'final' || st.type === 'cmp');
+const isQuizStep = st => !!st && (st.type === 'check' || st.type === 'cmp');
 const spellOK = w => /^[a-z]+(-[a-z]+)?$/i.test(w.w) && w.w.length <= 10;
 function makeOpts(w, kind, extra) {
   const key = kind === 'id2zh' ? 'zh' : 'w';
@@ -1040,32 +1032,29 @@ function startStudy(tid) {
     });
     pend = [];
   });
-  steps.push({ type: 'final' });
+  steps.push({ type: 'srs' });   // 最后一轮：换一句例句挖空打字，作为第一次 FSRS 复习（交给复习页的打字卡）
   UI.sess = { tid, steps, i: 0, words: ids, quiz: [], qi: 0, qAns: null, right: 0, wrong: 0, carry: [], stat: {}, weak: [], nk: 0, finished: false };
   setPrefs({ last: tid });
   go('study');
   const first = steps[0];
-  if (first.type === 'word') autoSay(WORDS[first.id].w);
+  if (first.type === 'word') studySay(first.id);
+}
+// 新词出现时先读例句，再读这个词
+function studySay(id) {
+  if (!DEV.autoplay || !canSpeak()) return;
+  const w = WORDS[id], cz = w.clozeSentence;
+  TTS.run((cz ? [{ text: plain(cz.id) }] : []).concat([{ text: w.w }]), 'ctx:' + id, { noLoop: true });
 }
 // 进入一个答题步骤时出题
 function stepQuiz(ss, st) {
   if (st.type === 'check') {
     // 刚看完的词：“看中文选印尼语”和“听音选词”交替；前面答错的词并进来，用看中文选印尼语
-    const qs = st.ids.map(id => {
-      const w = WORDS[id], kind = ss.nk++ % 2 === 0 || !canSpeak() ? 'zh2id' : 'listen';
-      return { w: id, kind, opts: makeOpts(w, kind, ss.words) };
-    });
-    const carry = ss.carry.filter(id => !st.ids.includes(id)).map(id => ({ w: id, kind: 'zh2id', opts: makeOpts(WORDS[id], 'zh2id', ss.words), carried: true }));
+    // 刚听过的例句挖空，打出这个词（只练，不计入 FSRS）；没有挖空句或不能打字的词改成看中文选印尼语
+    const ask = (id, carried) => { const w = WORDS[id], ctx = !!w.clozeSentence && typable(w); return { w: id, kind: ctx ? 'ctx' : 'zh2id', opts: ctx ? null : makeOpts(w, 'zh2id', ss.words), carried }; };
+    const qs = st.ids.map(id => ask(id, false));
+    const carry = ss.carry.filter(id => !st.ids.includes(id)).map(id => ask(id, true));
     ss.carry = [];
     return shuffle(qs).concat(carry);
-  }
-  if (st.type === 'final') {
-    ss.carry = [];
-    // 难度提一档：能拼的词听音、看中文拼出来，其余看中文选印尼语
-    return shuffle(ss.words).map(id => {
-      const w = WORDS[id], kind = spellOK(w) && canSpeak() ? 'spell' : 'zh2id';
-      return { w: id, kind, opts: kind === 'spell' ? null : makeOpts(w, kind, ss.words) };
-    });
   }
   // cmp：给中文，从同一组易混词里选
   const g = CF_BY[st.g], opts = shuffle(g.w.map(x => x[0]).filter(x => x !== st.id && WORDS[x])).slice(0, 3);
@@ -1076,15 +1065,17 @@ function vStudy() {
   if (!ss) return vHome();
   const t = TOPIC_BY[ss.tid];
   Clips.pack(t.id);
-  if (ss.finished) return studyDone(ss, t);
+  if (ss.finished) return vHome();   // 这一组已经交给最后一轮（复习页）了
   const step = ss.steps[ss.i];
   const prog = (ss.i + (isQuizStep(step) ? ss.qi / Math.max(1, ss.quiz.length) : 0)) / ss.steps.length;
   let h = '<div class="session wrap"><div class="s-head"><button class="icon-btn" data-act="quit" aria-label="暂停学习">' + ico('close') + '</button><div class="bar" role="progressbar" aria-valuenow="' + Math.round(prog * 100) + '" aria-valuemin="0" aria-valuemax="100"><i style="width:' + f1(prog * 100) + '%"></i></div><span class="s-count num">' + esc(t.zh) + '</span></div>';
   if (step.type === 'tip') {
     h += tipCard(t.tips[step.i]) + '<div class="s-foot"><button class="btn primary" data-act="next">知道了，开始学单词</button></div>';
   } else if (step.type === 'word') {
-    const n = ss.words.indexOf(step.id) + 1;
-    h += '<p class="eyebrow">新词 ' + n + ' / ' + ss.words.length + '</p><div class="card">' + wordCard(WORDS[step.id]) + '</div><div class="s-foot"><button class="btn primary" data-act="next">' + (n % CHECK_EVERY === 0 || n === ss.words.length ? '记住了，回想一下' : '记住了，下一个') + '</button></div>';
+    const n = ss.words.indexOf(step.id) + 1, w = WORDS[step.id], cz = w.clozeSentence;
+    h += '<p class="eyebrow">新词 ' + n + ' / ' + ss.words.length + ' · 先听例句</p>'
+      + (cz ? '<section class="card ctx-card"><button class="say bigplay" data-say="' + esc(plain(cz.id)) + '" aria-label="再听一遍例句">' + ico('play') + '</button><div class="grow"><p class="ctx-id" lang="id">' + hl(cz.id) + '</p><p class="ex-zh">' + esc(cz.zh) + '</p></div></section>' : '')
+      + '<div class="card">' + wordCard(w) + '</div><div class="s-foot"><button class="btn primary" data-act="next">' + (n % CHECK_EVERY === 0 || n === ss.words.length ? '记住了，回想一下' : '记住了，下一个') + '</button></div>';
   } else if (step.type === 'deck') {
     h += '<p class="eyebrow">插播一张语法卡片 · 左右滑动</p>' + deckHTML(DECKS[step.d]) + '<div class="s-foot"><button class="btn primary" data-act="next">看完了，继续</button></div>';
   } else {
@@ -1104,23 +1095,23 @@ function cfTable(g, cur) {
 function quizView(ss, step) {
   const q = ss.quiz[ss.qi], w = WORDS[q.w], a = ss.qAns;
   if (!q.t0) q.t0 = Date.now();   // 计时：最后一轮用 evaluateAttempt 判断要不要末尾再考
-  const kindTxt = { id2zh: '选出中文意思', zh2id: '选出对应的印尼语', listen: '听一听，选出你听到的词', spell: '听音、看中文，拼出这个词', cmp: '选出对应的印尼语' }[q.kind];
+  const kindTxt = { id2zh: '选出中文意思', zh2id: '选出对应的印尼语', listen: '听一听，选出你听到的词', spell: '听音、看中文，拼出这个词', cmp: '选出对应的印尼语', ctx: '刚听过的句子，打出空格里的词' }[q.kind];
   let h;
   if (step.type === 'check') h = '<p class="eyebrow">回想刚学的词 · ' + (ss.qi + 1) + ' / ' + ss.quiz.length + (q.carried ? ' · 刚才答错的' : '') + ' · ' + kindTxt + '</p>';
-  else if (step.type === 'final') h = '<p class="eyebrow">最后一轮 · ' + (ss.qi + 1) + ' / ' + ss.quiz.length + (q.re ? ' · 再来一次' : '') + ' · ' + kindTxt + '</p>';
   else {
     const g = CF_BY[q.g], card = '<section class="card stack cfcard"><h3>' + esc(g.t) + '</h3><p class="hint">' + esc(g.tip) + '</p>' + cfTable(g, a ? q.w : null) + '</section>';
     if (!ss.cmpAsk) return '<p class="eyebrow">对比一下 · 容易混的词</p>' + card + '<div class="s-foot"><button class="btn primary" data-act="next">看好了，考一下</button></div>';
     h = '<p class="eyebrow">对比一下 · 刚才那几个词，哪个是这个意思？</p>';
     if (a) h += card;
   }
-  h += '<section class="card qprompt">';
-  if (q.kind === 'id2zh') h += '<div class="w-word" lang="id">' + esc(w.w) + '</div>' + sayBtn(w.w);
+  h += '<section class="card qprompt" data-w="' + esc(q.w) + '">';
+  if (q.kind === 'ctx') h += '<p class="zh-big">' + esc(w.clozeSentence.zh) + '</p><p class="cloze" lang="id">' + (a ? hl(w.clozeSentence.id) : blankOut(w.clozeSentence.id)) + '</p>';
+  else if (q.kind === 'id2zh') h += '<div class="w-word" lang="id">' + esc(w.w) + '</div>' + sayBtn(w.w);
   else if (q.kind === 'zh2id' || q.kind === 'cmp') h += '<div class="zh-big">' + esc(w.zh) + '</div><span class="tag pos">' + (POSN[w.pos] || '') + '</span>';
   else if (q.kind === 'listen') h += '<button class="say bigplay" data-say="' + esc(w.w) + '" aria-label="再听一遍">' + ico('play') + '</button><p class="qkind">没听清就再点一下</p>';
   else h += '<div class="zh-big">' + esc(w.zh) + '</div><button class="say" data-say="' + esc(w.w) + '" aria-label="听发音">' + ico('play') + '</button>';
   h += '</section>';
-  if (q.kind === 'spell') {
+  if (q.kind === 'spell' || q.kind === 'ctx') {
     const cls = a ? (a.ok ? 'right' : 'wrong') : '';
     h += '<form class="spell" data-act-form="spell"><input id="spell-in" class="' + cls + '" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入印尼语" lang="id" value="' + (a ? esc(a.v) : '') + '"' + (a ? ' disabled' : '') + '><button class="btn primary" type="submit"' + (a ? ' disabled' : '') + '>确定</button></form>';
     if (a && !a.ok) h += '<p class="why">正确拼写：<b lang="id">' + esc(w.w) + '</b></p>';
@@ -1134,20 +1125,10 @@ function quizView(ss, step) {
   }
   if (a && a.ok && step.type === 'cmp') h += '<div class="s-foot"><button class="btn primary" data-act="qnext">继续</button></div>';
   if (a && !a.ok) {
-    const later = step.type === 'check' ? '这个词等一下会再考。' : step.type === 'final' && !q.re ? '这一轮最后会再考一次。' : '';
+    const later = step.type === 'check' ? '这个词等一下会再考。' : '';
     h += '<div class="card"><p class="w-zh" style="font-size:17px"><span lang="id">' + esc(w.w) + '</span> · ' + esc(w.zh) + '</p><ol class="exs" style="margin-top:10px">' + exItem(w.ex[0], { bare: true }) + '</ol>' + (later ? '<p class="hint" style="margin-top:8px">' + later + '</p>' : '') + '</div><div class="s-foot"><button class="btn primary" data-act="qnext">继续</button></div>';
   }
   return h;
-}
-function studyDone(ss, t) {
-  const total = ss.right + ss.wrong, pct = total ? Math.round(ss.right / total * 100) : 100;
-  const more = t.words.some(w => !isLearned(w.id)), due = dueIds().length, fbS = flowBar('study');
-  const nw = newWaitIds(), at = nw.length ? Math.min.apply(null, nw.map(id => S.words[id][7])) : 0;
-  return '<div class="session wrap"><section class="card"><div class="done-big"><p class="eyebrow">这一组完成了</p><b>+' + ss.words.length + '</b><p>个新词进入你的词库 · 一共回想 ' + total + ' 次，答对 ' + pct + '%</p></div>'
-    + '<div class="done-list">' + ss.words.map(id => { const st = ss.stat[id] || { ok: 0, bad: 0 }, weak = ss.weak.includes(id); return '<span class="wchip' + (weak ? ' weak' : '') + '">' + sayBtn(WORDS[id].w) + '<b lang="id">' + esc(WORDS[id].w) + '</b><span>' + esc(WORDS[id].zh) + (st.bad ? ' · 错 ' + st.bad + ' 次' : '') + (weak ? ' · 没记牢' : '') + '</span></span>'; }).join('') + '</div>'
-    + '<p class="muted" style="text-align:center;margin-top:14px;font-size:13px">' + (at ? '这些词' + hm(at) + '以后会在复习里再出现一次，趁还有印象再想一遍；明天再复习一次。' : '这些词明天会出现在复习里，记得回来。') + (ss.weak.length ? '标了“没记牢”的词 10 分钟后就会再考。' : '') + '</p></section>'
-    + '<div class="stack">' + fbS + (more ? '<button class="btn ' + (fbS ? '' : 'primary ') + 'block" data-act="study" data-t="' + t.id + '">再学一组</button>' : '<p class="tag pos" style="align-self:center">本课词汇全部学完！</p>')
-    + (due ? '<a class="btn block" href="#review">去复习（' + due + '）</a>' : '') + '<a class="btn block" href="#t-' + t.id + '">回到课程页</a></div></div>';
 }
 function sessNext() {
   const ss = UI.sess;
@@ -1164,19 +1145,21 @@ function sessNext() {
 function sessGo(ss) {
   ss.i++; ss.qi = 0; ss.qAns = null; ss.quiz = []; ss.cmpAsk = false;
   const nx = ss.steps[ss.i];
+  if (nx && nx.type === 'srs') {
+    sessFinish(ss);
+    startReview(ss.words.slice(), false, '新词最后一轮 · 换一句例句拼写', { alt: true, fromStudy: { tid: ss.tid, words: ss.words.slice(), stat: ss.stat } });
+    return;
+  }
   if (!nx) sessFinish(ss);
   else if (isQuizStep(nx)) ss.quiz = stepQuiz(ss, nx);
   render();
   window.scrollTo(0, 0);
   if (!nx) return;
-  if (nx.type === 'word') autoSay(WORDS[nx.id].w);
+  if (nx.type === 'word') studySay(nx.id);
   else if (isQuizStep(nx) && nx.type !== 'cmp') { quizAutoSay(ss); focusSpell(); }
 }
 function sessFinish(ss) {
   ss.finished = true; ss.i = ss.steps.length;
-  // 最后一轮再考还是错的：当成“不认识”，10 分钟后在复习里再考，也标成“没记牢”（排在前面、进错词本）
-  ss.weak.forEach(id => { const s = S.words[id]; if (s && s[0] > 0 && s[8] !== 1) { s[6] = 1; s[2] = Date.now(); s[7] = Date.now() + AGAIN_MS; if (Array.isArray(s[10])) s[10][0] = s[7]; } });
-  if (ss.weak.length) Sync.mark('progress');
 }
 const focusSpell = () => { const sp = $('#spell-in'); if (sp && matchMedia('(pointer:fine)').matches) sp.focus(); };
 function quizAutoSay(ss) {
@@ -1195,17 +1178,14 @@ function qAnswer(v) {
   if (q.kind === 'spell') {
     const norm = s => String(s).toLowerCase().replace(/[-\s]+/g, ' ').replace(/[^a-z ]/g, '').trim();
     ok = norm(v) === norm(w.w);
-  } else ok = v === q.w;
+  } else if (q.kind === 'ctx') ok = !!revMatch(w, v);   // 口语形式也算对
+  else ok = v === q.w;
   ss.qAns = { v, ok };
   const st = ss.stat[q.w] || (ss.stat[q.w] = { ok: 0, bad: 0 });
   if (ok) { ss.right++; st.ok++; }
   else {
     ss.wrong++; st.bad++;
     if (step.type === 'check' && !ss.carry.includes(q.w)) ss.carry.push(q.w);                  // 并进下一次回想
-    else if (step.type === 'final' && evaluateAttempt({ attempts: 1, skipped: true, reactionTimeMs: Date.now() - (q.t0 || Date.now()), target: q.kind === 'spell' ? w.w : '' }).requeue) {
-      if (!q.re) ss.quiz.push({ w: q.w, kind: q.kind, re: true, opts: q.opts ? shuffle(q.opts) : null });   // 这一轮最后再考一次
-      else if (!ss.weak.includes(q.w)) ss.weak.push(q.w);
-    }
   }
   render();
   TTS.play(w.w, w.w, { noLoop: true });
@@ -1229,12 +1209,13 @@ function qNext() {
 const QUIZ_EVERY = 10, ROUND_MAX = 30;
 const blankOut = s => esc(s).replace(/\[[^\]]+\]/g, '<span class="blank" aria-label="空格"></span>');
 const hasMark = e => /\[[^\]]+\]/.test(e.id);
-function startReview(ids, practice, title) {
+function startReview(ids, practice, title, opts) {
   ids = ids.filter(id => WORDS[id]);
   if (!ids.length) { toast('没有可以复习的词'); return; }
   Clips.prefetch(ids.slice(0, 8).map(id => WORDS[id].w));
   // re：错题队列里的位置（本轮末尾再考一次，只练不计 FSRS）；at：当前这张卡的作答情况
-  UI.rev = { queue: ids.slice(0, practice ? 20 : ROUND_MAX), i: 0, practice: !!practice, title: title || '', n: 0, g: { 1: 0, 2: 0, 3: 0, 4: 0 }, missed: [], recent: [], quiz: null, quizN: 0, card: null, re: {}, at: null };
+  opts = opts || {};
+  UI.rev = { queue: ids.slice(0, practice ? 20 : ROUND_MAX), i: 0, practice: !!practice, title: title || '', n: 0, g: { 1: 0, 2: 0, 3: 0, 4: 0 }, missed: [], recent: [], quiz: null, quizN: 0, card: null, re: {}, at: null, alt: !!opts.alt, fromStudy: opts.fromStudy || null };
   go('review');
   window.scrollTo(0, 0);
 }
@@ -1242,8 +1223,15 @@ function startReview(ids, practice, title) {
 function revCard(rv) {
   const id = rv.queue[rv.i];
   if (rv.card && rv.card.id === id && rv.card.at === rv.i) return rv.card;
-  const w = WORDS[id], cloze = !!w.clozeSentence;
-  rv.card = { id, at: rv.i, kind: cloze ? 'cloze' : 'zh', type: typable(w) ? 'type' : 'pick', opts: typable(w) ? null : makeOpts(w, 'zh2id') };
+  const w = WORDS[id];
+  // 学新词的最后一轮：换一句刚才没听过的例句（优先把这个词本身标出来的）
+  let cz = w.clozeSentence;
+  if (rv.alt && cz) {
+    const same = e => { const m = e.id.match(/\[([^\]]+)\]/); return m && m[1].toLowerCase() === w.w.toLowerCase(); };
+    const other = w.ex.filter(e => e.id !== cz.id && same(e))[0] || w.ex.filter(e => e.id !== cz.id && hasMark(e))[0];
+    if (other) cz = { id: other.id, zh: other.zh, hint: w.zh };
+  }
+  rv.card = { id, at: rv.i, kind: cz ? 'cloze' : 'zh', cz, type: typable(w) ? 'type' : 'pick', opts: typable(w) ? null : makeOpts(w, 'zh2id') };
   return rv.card;
 }
 // 当前这张卡的作答状态；换卡时重新开始计时
@@ -1306,7 +1294,7 @@ function revNext() {
   rv.i++; rv.at = null;
   TTS.stop();
   // 每答完 10 张插一道选择题；一轮结束时剩下不少于 5 张没考过，也补一道
-  if (rv.recent.length >= QUIZ_EVERY || (rv.i >= rv.queue.length && rv.recent.length >= 5)) { rv.quiz = makeRevQuiz(rv); rv.recent = []; }
+  if (!rv.fromStudy && (rv.recent.length >= QUIZ_EVERY || (rv.i >= rv.queue.length && rv.recent.length >= 5))) { rv.quiz = makeRevQuiz(rv); rv.recent = []; }   // 学新词的最后一轮不插选择题
   render();
   window.scrollTo(0, 0);
   revQuizSay();
@@ -1364,6 +1352,7 @@ function revLanding() {
   return h + '</div>';
 }
 function revDone(rv) {
+  if (rv.fromStudy) return revStudyDone(rv);
   const left = dueIds().length, missed = rv.missed.filter((id, k, a) => a.indexOf(id) === k);
   let h = '<div class="page wrap"><section class="card stack"><p class="eyebrow">' + (rv.practice ? '练习结束' : '这一轮结束') + '</p>'
     + '<h2 class="h-sec">' + (rv.practice ? '练习' : '复习') + '了 ' + rv.n + ' 个词</h2>'
@@ -1379,6 +1368,17 @@ function revDone(rv) {
   return h;
 }
 
+// 学新词最后一轮结束：这一组的词和各自的评分
+function revStudyDone(rv) {
+  const fs = rv.fromStudy, t = TOPIC_BY[fs.tid], more = t.words.some(w => !isLearned(w.id)), fb = flowBar('study');
+  const rate = id => { const s = S.words[id]; return s && Array.isArray(s[10]) ? srsDaysUntil(s) : null; };
+  let h = '<div class="session wrap"><section class="card"><div class="done-big"><p class="eyebrow">这一组完成了</p><b>+' + fs.words.length + '</b><p>个新词进入你的词库 · 最后一轮：' + [4, 3, 2, 1].map(r => RATING_NAME[r] + ' ' + rv.g[r]).join(' · ') + '</p></div>'
+    + '<div class="done-list">' + fs.words.map(id => { const d = rate(id), weak = rv.missed.includes(id); return '<span class="wchip' + (weak ? ' weak' : '') + '">' + sayBtn(WORDS[id].w) + '<b lang="id">' + esc(WORDS[id].w) + '</b><span>' + esc(WORDS[id].zh) + (d != null ? ' · ' + dayWord(d) + '复习' : '') + '</span></span>'; }).join('') + '</div>'
+    + '<p class="muted" style="text-align:center;margin-top:14px;font-size:13px">下次什么时候复习由 FSRS 按最后一轮的表现来排' + (rv.missed.length ? '；没拼出来的词明天就会再考' : '') + '。</p></section>'
+    + '<div class="stack">' + fb + (more ? '<button class="btn ' + (fb ? '' : 'primary ') + 'block" data-act="study" data-t="' + t.id + '">再学一组</button>' : '<p class="tag pos" style="align-self:center">本课词汇全部学完！</p>')
+    + '<a class="btn block" href="#t-' + t.id + '">回到课程页</a></div></div>';
+  return h;
+}
 function revQuizView(rv) {
   const q = rv.quiz, w = WORDS[q.w], a = q.ans, e = w.ex[q.ex];
   const kindTxt = { listen: '听发音，选出中文意思', fill: '选出填进空格的词', zh: '选出中文意思' }[q.kind];
@@ -1407,7 +1407,7 @@ function vReview() {
   let h = '<div class="session wrap"><div class="s-head"><button class="icon-btn" data-act="revExit" aria-label="结束复习">' + ico('close') + '</button><div class="bar"><i style="width:' + f1(prog * 100) + '%"></i></div><span class="s-count num">' + Math.min(rv.i + 1, rv.queue.length) + '/' + rv.queue.length + '</span></div>';
   if (rv.title) h += '<p class="eyebrow">' + esc(rv.title) + '</p>';
   if (rv.quiz) return h + revQuizView(rv) + '</div>';
-  const id = rv.queue[rv.i], w = WORDS[id], c = revCard(rv), at = revAt(rv), cz = w.clozeSentence, again = !!rv.re[rv.i];
+  const id = rv.queue[rv.i], w = WORDS[id], c = revCard(rv), at = revAt(rv), cz = c.cz, again = !!rv.re[rv.i];
   h += '<section class="card flash rev-card" data-w="' + esc(id) + '">';
   if (c.kind === 'cloze') h += '<p class="zh-big">' + esc(cz.zh) + '</p><p class="cloze" lang="id">' + (at.done ? hl(cz.id) : blankOut(cz.id)) + '</p>' + (!at.done && cz.hint && cz.hint !== cz.zh ? '<p class="qkind">提示：' + esc(cz.hint) + '</p>' : '');
   else h += '<p class="zh-big">' + esc(w.zh) + '</p><span class="tag pos">' + (POSN[w.pos] || '') + '</span>';
@@ -1458,19 +1458,33 @@ function revQuizNext() {
 
 /* ---------- 自由练习：自己挑一种训练模式 ---------- */
 // 不改复习间隔；答错的已学词只标成“没记牢”，下次复习排前面。不计分、不升级。
+// 主列表：要自己打出来、或者要在句子里分辨的；后四种选择题收在“辅助巩固 / 热身”里
 const PMODES = [
+  ['fill', '填', '句子填空', '例句挖空 · 打出这个词'],
+  ['dict', '写', '听写', '只听发音 · 打出单词'],
+  ['spell', '拼', '拼写挑战', '点字母拼单词'],
+  ['copy', '打', '跟打', '看着单词打一遍'],
+  ['cf', '辨', '易混辨析', '例句挖空 · 在易混词里选'],
+  ['mock', '考', '模拟挑战', '15 题 · 限时 10 分钟'],
   ['cards', '卡', '单词卡', '翻卡速记 · 带发音'],
   ['id2zh', '义', '看词选义', '印尼语 → 中文'],
   ['zh2id', '词', '看义选词', '中文 → 印尼语'],
-  ['listen', '听', '听音选义', '只听发音 → 中文'],
-  ['spell', '拼', '拼写挑战', '点字母拼单词'],
-  ['copy', '打', '跟打', '看着单词打一遍'],
-  ['dict', '写', '听写', '只听发音 · 打出单词'],
-  ['fill', '填', '句子填空', '例句挖空 · 选词'],
-  ['cf', '辨', '易混辨析', '例句挖空 · 在易混词里选'],
-  ['mock', '考', '模拟挑战', '15 题 · 限时 10 分钟']
+  ['listen', '听', '听音选义', '只听发音 → 中文']
 ];
+const PWARM = ['cards', 'id2zh', 'zh2id', 'listen'];
 const PMODE = {}; PMODES.forEach(m => { PMODE[m[0]] = m; });
+// 靠回忆打出来的题：已学过的词按 evaluateAttempt 评分，写进 FSRS（同一个词当天已经复习或记过分就不再记）
+const PRAC_SRS = { fill: 1, dict: 1, spell: 1 };
+function pracSrs(q, ok) {
+  const s = S.words[q.w];
+  if (!PRAC_SRS[q.kind] || !s || !(s[0] > 0) || s[8] === 1) return null;
+  const c = cardFromRecord(s);
+  if (c && c.last_review && srsDay(+c.last_review) === today()) return { skip: true };
+  const ev = evaluateAttempt({ attempts: 1, correct: ok, skipped: false, reactionTimeMs: Date.now() - (q.t0 || Date.now()), target: WORDS[q.w].w });
+  S.words[q.w] = srsReview(s, ev.rating, Date.now());
+  Sync.mark('progress');
+  return { rating: ev.rating, reason: ev.reason, days: srsDaysUntil(S.words[q.w]) };
+}
 const MOCK_N = 15, MOCK_MS = 10 * 60 * 1000, PRAC_N = 10;
 const spellable = w => /^[a-z]+(?:[ -][a-z]+)*$/i.test(w.w) && w.w.length >= 2 && w.w.length <= 16;
 const typable = w => /^[a-z]+(?:[ -][a-z]+)*$/i.test(w.w) && w.w.length >= 2 && w.w.length <= 28;   // 跟打、听写：用键盘打，可以长一些
@@ -1499,6 +1513,7 @@ function listsCard() {
     + block('错词本', weak, 'weak', '复习时评分在“模糊”以下、或练习时答错的词。复习时一次答对就会移出。')
     + block('收藏的词', fav, 'fav', '在单词卡上点“收藏”的词。') + '</section>';
 }
+const pmodeBtn = m => '<button class="pmode" data-act="pracStart" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>';
 function pracHub() {
   const sc = pracScope(), n = sc.words.length, nLearned = learnedIds().length;
   const opts = '<option value="learned"' + (sc.v === 'learned' ? ' selected' : '') + '>已学的词（' + nLearned + ' 个）</option>'
@@ -1507,11 +1522,9 @@ function pracHub() {
     + TOPICS.map(t => '<option value="' + t.id + '"' + (sc.v === t.id ? ' selected' : '') + '>第 ' + t.n + ' 课 · ' + esc(t.zh) + '（' + t.words.length + ' 个）</option>').join('');
   return '<section class="card stack" id="prac-hub"><h2 class="h-sec">自由练习 <small>选一种训练模式</small></h2>'
     + '<div class="set"><label for="pscope">练哪些词</label><select id="pscope">' + opts + '</select></div>'
-    + (n ? '<div class="pmodes">' + PMODES.map(m => '<button class="pmode" data-act="pracStart" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div>'
-      + '<p class="hint">先用单词卡熟悉，再用拼写和填空巩固，最后用模拟挑战检验。练习不改变复习计划，答错的词下次复习会排在前面。</p>'
-      + '<p class="eyebrow" style="margin-top:6px">句子与语感 · 用这些词的例句</p>'
-      + '<div class="pmodes" id="sen-modes">' + SMODES.map(m => '<button class="pmode smode" data-act="senStart" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div>'
-      + '<p class="hint">连续播放和影子跟读用来磨耳朵、练语调；连词成句和听音组句练语序。</p>'
+    + (n ? '<div class="pmodes">' + PMODES.filter(m => !PWARM.includes(m[0])).map(pmodeBtn).join('') + '</div>'
+      + '<details class="more warm"><summary>辅助巩固 / 热身 <span class="muted">单词卡、看词选义、看义选词、听音选义</span></summary><div class="pmodes" style="margin-top:8px">' + PMODES.filter(m => PWARM.includes(m[0])).map(pmodeBtn).join('') + '</div></details>'
+      + '<p class="hint">句子填空、听写、拼写挑战靠回忆作答，已学过的词会按表现自动评分并更新复习计划（同一个词每天最多计一次）。跟打和选择题只练不计分。句子连播、影子跟读和组句已经并进首页的“今日学习”。</p>'
       : '<p class="sub">' + (sc.v === 'weak' ? '错词本是空的。' : sc.v === 'fav' ? '还没有收藏的词，在单词卡上点“收藏”。' : '还没有学过的词。先去课程里学几个，') + '可以在上面换成“全部课程”或某一课。</p>')
     + '</section>';
 }
@@ -1531,7 +1544,9 @@ function pracQuestion(w, kind) {
   if (kind === 'spell' && !spellable(w)) kind = 'zh2id';
   if (kind === 'listen' && !canSpeak()) kind = 'id2zh';
   if (kind === 'dict' && !canSpeak()) kind = 'copy';
+  if (kind === 'fill' && !typable(w)) kind = 'zh2id';
   if (kind === 'copy' || kind === 'dict') return { w: w.id, kind, ex: exs.length ? exs[rnd(exs.length)] : 0, ans: null };
+  if (kind === 'fill') { const ce = cfExs(w); return { w: w.id, kind, ex: ce.length ? ce[rnd(ce.length)] : exs[rnd(exs.length)], ans: null }; }   // 打字填空：优先用把这个词本身标出来的例句
   const q = { w: w.id, kind, ex: exs.length ? exs[rnd(exs.length)] : 0, ans: null };
   if (kind === 'spell') {
     // 字母块：答案里的字母打乱，再混进 3 个干扰字母；空格和连字符直接给出
@@ -1546,7 +1561,7 @@ function startPractice(mode, ids, label) {
   if (mode === 'fill') pool = pool.filter(w => w.ex.some(hasMark));
   if (mode === 'cf') pool = pool.filter(cfAble);
   if (mode === 'spell') pool = pool.filter(spellable);
-  if (mode === 'copy' || mode === 'dict') pool = pool.filter(typable);
+  if (mode === 'copy' || mode === 'dict' || mode === 'fill') pool = pool.filter(typable);
   if (!pool.length) { toast('这个范围里没有适合这种练习的词'); return; }
   const n = mode === 'mock' ? MOCK_N : mode === 'cards' ? 20 : PRAC_N;
   const words = shuffle(pool).slice(0, n);
@@ -1577,7 +1592,7 @@ function pracSay() {
   if (p.mode === 'cards') { if (!p.flip) autoSay(w.w); }
   else if (q.kind === 'listen' || q.kind === 'spell' || q.kind === 'dict') TTS.play(w.w, w.w, { noLoop: true });
   else if (q.kind === 'id2zh' || q.kind === 'copy') autoSay(w.w);
-  if (q.kind === 'copy' || q.kind === 'dict') { const i = $('#ptype-in'); if (i) i.focus(); }
+  if (q.kind === 'copy' || q.kind === 'dict' || q.kind === 'fill') { const i = $('#ptype-in'); if (i) i.focus(); }
 }
 function pracFinish() {
   const p = UI.prac;
@@ -1595,8 +1610,9 @@ function pracAnswer(v) {
   const q = p.qs[p.i];
   if (q.ans) return;
   const w = WORDS[q.w], norm = s => String(s).toLowerCase().replace(/[^a-z]/g, '');
-  const ok = q.kind === 'spell' ? norm(v) === norm(w.w) : q.kind === 'copy' || q.kind === 'dict' ? normType(v) === normType(w.w) : v === q.w;
+  const ok = q.kind === 'spell' ? norm(v) === norm(w.w) : q.kind === 'fill' ? !!revMatch(w, v) : q.kind === 'copy' || q.kind === 'dict' ? normType(v) === normType(w.w) : v === q.w;
   q.ans = { v, ok };
+  q.srs = pracSrs(q, ok);
   if (ok) p.right++;
   else {
     if (!p.wrong.includes(q.w)) p.wrong.push(q.w);
@@ -1682,7 +1698,8 @@ function vPractice() {
     return h + '</div>';
   }
   const a = q.ans, e = w.ex[q.ex];
-  const kindTxt = { id2zh: '选出中文意思', zh2id: '选出对应的印尼语', listen: '听发音，选出中文意思', spell: '拼出这个词', fill: '选出填进空格的词', cf: '选出填进空格的词（容易混的几个）', copy: '照着打一遍', dict: '听发音，打出这个词' }[q.kind];
+  if (!q.t0) q.t0 = Date.now();   // 计时：靠回忆作答的题按耗时自动评分
+  const kindTxt = { id2zh: '选出中文意思', zh2id: '选出对应的印尼语', listen: '听发音，选出中文意思', spell: '拼出这个词', fill: '打出空格里的词', cf: '选出填进空格的词（容易混的几个）', copy: '照着打一遍', dict: '听发音，打出这个词' }[q.kind];
   h += '<p class="eyebrow">' + esc(m[2]) + ' · ' + kindTxt + '</p><section class="card qprompt">';
   if (q.kind === 'id2zh') h += '<div class="w-word" lang="id">' + esc(w.w) + '</div>' + sayBtn(w.w);
   else if (q.kind === 'copy') h += '<div class="pecho" id="pecho" lang="id" aria-label="' + esc(w.w) + '">' + echoHTML(w.w, a ? a.v : '') + '</div><div class="row">' + sayBtn(w.w) + '<span>' + esc(w.zh) + '</span></div>';
@@ -1693,7 +1710,7 @@ function vPractice() {
   else h += '<div class="zh-big">' + esc(w.zh) + '</div><div class="row"><button class="say" data-say="' + esc(w.w) + '" aria-label="听发音">' + ico('play') + '</button><span class="tag pos">' + (POSN[w.pos] || '') + '</span></div>';
   h += '</section>';
   if (q.kind === 'spell') h += pracSpellView(q, w);
-  else if (q.kind === 'copy' || q.kind === 'dict') {
+  else if (q.kind === 'copy' || q.kind === 'dict' || q.kind === 'fill') {
     h += '<form class="spell" data-act-form="ptype"><input id="ptype-in" class="' + (a ? (a.ok ? 'right' : 'wrong') : '') + '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="输入印尼语" lang="id" value="' + (a ? esc(a.v) : '') + '"' + (a ? ' disabled' : '') + '><button class="btn primary" type="submit"' + (a ? ' disabled' : '') + '>确定</button></form>';
   } else {
     const idn = q.kind === 'zh2id' || q.kind === 'fill' || q.kind === 'cf';
@@ -1706,6 +1723,7 @@ function vPractice() {
     h += '<section class="card stack"><p class="why">' + (a.ok ? '答对了。' : '答错了，正确答案是：') + '</p>'
       + '<div class="row">' + sayBtn(w.w) + '<b lang="id" style="font-size:20px">' + esc(w.w) + '</b><span class="ipa-s">' + esc(IPA.of(w.w)) + '</span></div><p class="w-zh" style="font-size:17px">' + esc(w.zh) + '</p>'
       + '<ol class="exs">' + exItem(e, { bare: true }) + '</ol>'
+      + (q.srs ? '<p class="sub">' + (q.srs.skip ? '这个词今天已经复习过，这次不计入复习计划。' : '已计入复习计划：<b>' + RATING_NAME[q.srs.rating] + '</b>（' + q.srs.rating + ' 分 · ' + esc(q.srs.reason) + '）' + (q.srs.days != null ? ' · 下次复习：' + dayWord(q.srs.days) : '')) + '</p>' : '')
       + (q.kind === 'cf' && CF_BY[q.g] ? '<div class="stack cfcard" style="gap:8px"><p class="hint"><b>' + esc(CF_BY[q.g].t) + '</b>：' + esc(CF_BY[q.g].tip) + '</p>' + cfTable(CF_BY[q.g], q.w) + '</div>' : '') + '</section>'
       + '<div class="s-foot"><button class="btn primary" data-act="pracNext">' + (p.i >= p.qs.length - 1 ? '看结果' : '继续') + '</button></div>';
   }
@@ -2031,19 +2049,22 @@ function readWatch() {
   }, 150);
 }
 
-/* ---------- 今日学习：把复习、学新词、默写串成一次 ---------- */
-// 顺序固定：复习到期的词 → 学一组新词（当天目标没完成时）→ 默写今天学的词。没有内容的步骤自动跳过。
-const FLOW_STEPS = ['review', 'study', 'spell'];
-const FLOW_NAME = { review: '复习到期的词', study: '学一组新词', spell: '默写今天学的词' };
-function todayNewIds() { const t = today(); return learnedIds().filter(id => S.words[id][5] === t && !isKnown(id) && spellable(WORDS[id])); }
+/* ---------- 今日学习：唯一的主入口 ---------- */
+// 顺序固定：复习旧词（句子挖空打字）→ 学一组新词（先听例句、看词根和口语形式，再在句子里拼写）→ 盲听一段含今天新词的短对话。
+// 没有内容的步骤自动跳过。
+const FLOW_STEPS = ['review', 'study', 'listen'];
+const FLOW_NAME = { review: '复习旧词：句子挖空', study: '学新词：听例句、在句子里拼写', listen: '盲听一段含新词的短对话' };
+// 今天新学的词（已掌握的不算）
+function todayLearned() { const t = today(); return learnedIds().filter(id => S.words[id][5] === t && !isKnown(id)); }
+function todayNewIds() { return todayLearned().filter(id => spellable(WORDS[id])); }
 function flowHas(step, f) {
   if (step === 'review') return dueIds().length > 0;
   if (step === 'study') return !!nextTopic() && ((S.log[dkey(today())] || {}).n || 0) < S.prefs.goal && !f.studied;
-  return todayNewIds().length > 0 && !f.spelled;
+  return !f.listened && !!pickDialog(todayLearned());
 }
 function flowPeek() { const f = UI.flow; return f && f.on ? FLOW_STEPS.find(s => !f.did[s] && flowHas(s, f)) || null : null; }
-function flowPlan() { const f = { did: {}, studied: false, spelled: false }; return FLOW_STEPS.filter(s => s === 'spell' ? flowHas('study', f) || todayNewIds().length > 0 : flowHas(s, f)); }
-function flowStart() { UI.flow = { on: true, did: {}, studied: false, spelled: false, n0: (S.log[dkey(today())] || {}).n || 0, r0: (S.log[dkey(today())] || {}).r || 0 }; flowNext(); }
+function flowPlan() { const f = { did: {}, studied: false, listened: false }; return FLOW_STEPS.filter(s => s === 'listen' ? flowHas('study', f) || flowHas('listen', f) : flowHas(s, f)); }
+function flowStart() { UI.flow = { on: true, did: {}, studied: false, listened: false, n0: (S.log[dkey(today())] || {}).n || 0, r0: (S.log[dkey(today())] || {}).r || 0 }; flowNext(); }
 function flowNext() {
   const f = UI.flow;
   if (!f || !f.on) return;
@@ -2051,14 +2072,14 @@ function flowNext() {
   if (!step) {
     const L = S.log[dkey(today())] || {};
     f.on = false; f.done = { n: (L.n || 0) - f.n0, r: (L.r || 0) - f.r0 };
-    UI.rev = null; UI.prac = null;
+    UI.rev = null; UI.prac = null; UI.lis = null;
     go('home'); render(); window.scrollTo(0, 0);
     return;
   }
   f.cur = step;
   if (step === 'review') { UI.rev = null; startReview(dueIds(), false, '今日学习 · ' + FLOW_NAME.review); }
   else if (step === 'study') { f.studied = true; startStudy(nextTopic().id); }
-  else { f.spelled = true; startPractice('spell', todayNewIds(), '今天学的词'); if (UI.prac) UI.prac.flow = true; }
+  else { f.listened = true; startListen(); }
 }
 // 各个结束页上的“下一步”
 function flowBar(step) {
@@ -2068,13 +2089,91 @@ function flowBar(step) {
   const nx = flowPeek();
   return '<button class="btn primary block" data-act="flowNext">' + (nx ? '下一步：' + FLOW_NAME[nx] : '完成今日学习') + '</button>';
 }
+// 首页的主卡：列出今天三步各有多少内容，“开始 / 继续”是首页唯一的主按钮
 function flowCard() {
-  const f = UI.flow;
-  if (f && f.done) return '<section class="card stack"><p class="eyebrow">今日学习</p><h2 class="h-sec">今天这一轮做完了</h2><p class="sub">新学 ' + f.done.n + ' 个词，复习和练习 ' + f.done.r + ' 次。</p></section>';
-  if (f && f.on) { const nx = flowPeek(); return '<section class="card action"><div class="grow"><p class="eyebrow">今日学习 · 进行中</p><h3>' + (nx ? '下一步：' + FLOW_NAME[nx] : '只差收尾') + '</h3></div><button class="btn primary" data-act="flowNext">继续</button><button class="linkbtn" data-act="flowQuit">结束</button></section>'; }
+  const f = UI.flow, due = dueIds().length, next = nextTopic(), L = S.log[dkey(today())] || {};
+  const nNew = L.n || 0, left = next ? Math.min(S.prefs.batch, next.words.filter(w => !isLearned(w.id)).length) : 0;
+  const row = (k, ic, title, sub, on) => '<li class="fstep' + (on ? '' : ' off') + (f && f.did && f.did[k] ? ' done' : '') + '"><span class="gi">' + ic + '</span><span class="grow"><b>' + title + '</b><small>' + sub + '</small></span>' + (f && f.did && f.did[k] ? ico('check') : '') + '</li>';
+  const steps = '<ol class="fsteps">'
+    + row('review', '复', '复习旧词 · 句子挖空', due ? due + ' 个词到期，打出空格里的词，自动评分' : '现在没有到期的词', due > 0)
+    + row('study', '新', '学新词 · 听例句、在句子里拼写', next && nNew < S.prefs.goal ? '第 ' + next.n + ' 课 · ' + esc(next.zh) + ' · ' + left + ' 个新词' : nNew >= S.prefs.goal ? '今天的 ' + S.prefs.goal + ' 个新词目标已完成' : '课程里的词都学完了', !!next && nNew < S.prefs.goal)
+    + row('listen', '听', '盲听短对话', '一段含今天新词的对话，先听再看文字', true)
+    + '</ol>';
+  if (f && f.on) {
+    const nx = flowPeek();
+    return '<section class="card stack flowmain"><p class="eyebrow">今日学习 · 进行中</p><h2 class="h-sec">' + (nx ? '下一步：' + FLOW_NAME[nx] : '只差收尾') + '</h2>' + steps
+      + '<div class="row"><button class="btn primary grow" data-act="flowNext">继续</button><button class="linkbtn" data-act="flowQuit">结束</button></div></section>';
+  }
   const plan = flowPlan();
-  if (!plan.length) return '';
-  return '<section class="card action"><div class="grow"><p class="eyebrow">今日学习</p><h3>一次做完今天的安排</h3><p class="sub">' + plan.map(s => FLOW_NAME[s]).join(' → ') + '</p></div><button class="btn primary" data-act="flowStart">开始</button></section>';
+  if (f && f.done || !plan.length) {
+    const d = f && f.done;
+    return '<section class="card stack flowmain"><p class="eyebrow">今日学习</p><h2 class="h-sec">' + (d ? '今天这一轮做完了' : '今天没有要做的了') + '</h2>'
+      + '<p class="sub">' + (d ? '新学 ' + d.n + ' 个词，复习和练习 ' + d.r + ' 次。' : '到期的词都复习过了，今天的新词目标也完成了。') + '想多练可以再学一组，或者去自由练习。</p>'
+      + '<div class="row wrap-ok">' + (next ? '<button class="btn" data-act="study" data-t="' + next.id + '">再学一组新词</button>' : '') + '<button class="btn" data-act="pracHub">自由练习</button></div></section>';
+  }
+  return '<section class="card stack flowmain"><p class="eyebrow">今日学习</p><h2 class="h-sec">一次做完今天的安排</h2>' + steps
+    + '<button class="btn primary block" data-act="flowStart">开始</button></section>';
+}
+
+/* ---------- 今日学习最后一步：盲听一段短对话 ---------- */
+// 挑含这些词最多的一段对话（对话在 dialogue-*.js，按课每 8 个词写一段）
+function pickDialog(ids) {
+  if (!ids || !ids.length) return null;
+  let best = null, bn = 0;
+  DIALOGS.forEach(d => { const n = ids.filter(id => dlgCovers(d, id)).length; if (n > bn) { bn = n; best = d; } });
+  return best;
+}
+function startListen(ids) {
+  ids = ids || todayLearned();
+  const d = pickDialog(ids);
+  if (!d) { toast('今天还没有学新词'); return false; }
+  UI.lis = { d, ids: ids.filter(id => dlgCovers(d, id)), shown: false, plays: 0 };
+  Clips.prefetch(d.s.map(x => x[1]));
+  go('listen');
+  window.scrollTo(0, 0);
+  return true;
+}
+// 把句子里今天的新词（含口语形式）标出来
+function lisMark(text, ids) {
+  let h = esc(text);
+  ids.forEach(id => {
+    const w = WORDS[id];
+    [w.w].concat(w.colloquial || []).forEach(f => {
+      const re = new RegExp('(^|[^\\p{L}])(' + esc(f).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?![\\p{L}])', 'giu');
+      h = h.replace(re, '$1<mark class="hl">$2</mark>');
+    });
+  });
+  return h;
+}
+let lisTimerId = 0;
+function lisWatch() {
+  clearInterval(lisTimerId);
+  lisTimerId = setInterval(() => {
+    const c = TTS.cur, L = UI.lis, on = c && L && c.key === 'lis:' + L.d.id && UI.route.name === 'listen';
+    const k = on ? c.i - 1 : -1;
+    $$('.lis-line').forEach(el => el.classList.toggle('cur', +el.dataset.k === k));
+    if (!on) clearInterval(lisTimerId);
+  }, 150);
+}
+function vListen() {
+  const L = UI.lis;
+  if (!L) return vHome();
+  const d = L.d, words = L.ids.map(id => WORDS[id]);
+  let h = '<div class="page wrap"><section class="card stack"><p class="eyebrow">' + (UI.flow && UI.flow.on ? '今日学习 · ' : '') + '盲听一段短对话</p><h2 class="h-sec">' + esc(d.zh) + '</h2>'
+    + '<p class="sub">' + (L.shown ? '对一对：标出来的是今天学的词。听不清的句子可以单独点开再听。' : '先别看文字，只用耳朵听。对话里有今天学的 ' + words.length + ' 个词，听出来几个？听完再点“显示文字”核对。') + '</p>'
+    + '<div class="row wrap-ok"><button class="btn primary" data-act="lisPlay" data-key="lis:' + esc(d.id) + '">' + ico('play') + '<span class="when-off">' + (L.plays ? '再听一遍' : '播放对话') + '</span><span class="when-on">停止</span></button>'
+    + (L.shown ? '' : '<button class="btn" data-act="lisShow"' + (L.plays ? '' : ' disabled') + '>显示文字</button>') + '</div></section>';
+  h += '<section class="card lis-lines">' + d.s.map((x, k) => '<div class="lis-line" data-k="' + k + '"><span class="rspk">' + x[0] + '</span>'
+    + (L.shown ? '<div class="grow"><p class="rs-id" lang="id">' + lisMark(x[1], L.ids) + '</p><p class="rs-zh">' + esc(x[2]) + '</p></div>' + sayBtn(x[1], 'sm')
+      : '<div class="grow"><span class="lis-bar" style="width:' + Math.min(100, 18 + x[1].length * 1.6) + '%"></span></div>') + '</div>').join('') + '</section>';
+  if (L.shown) {
+    h += '<section class="card stack"><h2 class="h-sec">今天的词 <small>' + words.length + ' 个</small></h2><div class="wchips">' + words.map(w => '<span class="wchip">' + sayBtn(w.w) + '<b lang="id">' + esc(w.w) + '</b><span>' + esc(w.zh) + '</span></span>').join('') + '</div>'
+      + '<p class="eyebrow" style="margin-top:6px">用这段对话再练一下（可选）</p><div class="pmodes">'
+      + SMODES.filter(m => m[0] === 'shadow' || m[0] === 'hear').map(m => '<button class="pmode smode" data-act="lisSen" data-m="' + m[0] + '"><span class="gi">' + m[1] + '</span><span class="grow"><b>' + m[2] + '</b><small>' + m[3] + '</small></span></button>').join('') + '</div></section>';
+    const fb = flowBar('listen');
+    h += '<div class="stack">' + (fb || '<button class="btn primary block" data-act="lisExit">完成</button>') + '</div>';
+  }
+  return h + '</div>';
 }
 
 /* ---------- 发音 ---------- */
@@ -2333,7 +2432,7 @@ function refreshWordViews(id) {
   if (UI.sheetWord === id) { const p = $('.sheet-panel'); const top = p ? p.scrollTop : 0; openWord(id); const p2 = $('.sheet-panel'); if (p2) p2.scrollTop = top; }
   else if (UI.route.name === 'study') { const y = window.scrollY; render(); window.scrollTo(0, y); }
 }
-const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice, sense: vSense, read: vRead };
+const VIEWS = { home: vHome, learn: vLearn, review: vReview, pron: vPron, stats: vStats, me: vMe, topic: vTopic, study: vStudy, ref: vRef, practice: vPractice, sense: vSense, read: vRead, listen: vListen };
 function parseHash() {
   let h = location.hash.slice(1);
   try { h = decodeURIComponent(h); } catch (e) { /* 忽略 */ }
@@ -2342,6 +2441,7 @@ function parseHash() {
   if (h.indexOf('ref-') === 0) return { name: 'ref', arg: h.slice(4) };
   if (h === 'practice') return UI.prac ? { name: 'practice' } : { name: 'review' };
   if (h === 'sense') return UI.sen ? { name: 'sense' } : { name: 'review' };
+  if (h === 'listen') return UI.lis ? { name: 'listen' } : { name: 'home' };
   if (h.indexOf('read-') === 0) return { name: 'read', arg: h.slice(5) };
   if (h && VIEWS[h] && h !== 'topic') return { name: h };
   return { name: 'home' };
@@ -2360,6 +2460,8 @@ function route() {
   UI.route = parseHash();
   closeSheetSilently();
   if (prev !== UI.route.name || UI.route.name === 'topic' || UI.route.name === 'read') TTS.stop();
+  // 学新词最后一轮的结束页看过、离开后，复习页回到正常的首页
+  if (prev === 'review' && UI.route.name !== 'review' && UI.rev && UI.rev.fromStudy && !UI.rev.quiz && UI.rev.i >= UI.rev.queue.length) UI.rev = null;
   if (prev === 'sense' && UI.route.name !== 'sense' && UI.sen && UI.sen.playing) { UI.sen.playing = false; UI.sen.phase = ''; clearInterval(senTimerId); }   // 离开页面就暂停连播
   render();
   window.scrollTo(0, 0);
@@ -2376,7 +2478,7 @@ function render() {
   if (TTS.cur) markPlaying(TTS.cur.key, true);
 }
 function updateNav() {
-  const cur = ['topic', 'study', 'ref', 'read'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' || UI.route.name === 'sense' ? 'review' : UI.route.name;
+  const cur = ['topic', 'study', 'ref', 'read'].includes(UI.route.name) ? 'learn' : UI.route.name === 'practice' || UI.route.name === 'sense' ? 'review' : UI.route.name === 'listen' ? 'home' : UI.route.name;
   $$('#nav a[data-nav]').forEach(a => { if (a.dataset.nav === cur) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const b = $('#due-badge'), n = dueIds().length;
   if (b) { b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n); }
@@ -2549,6 +2651,10 @@ const ACT = {
     flowNext();
   },
   flowQuit: () => { UI.flow = null; render(); },
+  lisPlay: () => { const L = UI.lis; if (!L) return; if (!canSpeak()) { toast('这个浏览器不能播放声音'); return; } L.plays++; TTS.run(L.d.s.map(x => ({ text: plain(x[1]) })), 'lis:' + L.d.id, { noLoop: true }); const y = window.scrollY; render(); window.scrollTo(0, y); lisWatch(); },
+  lisShow: () => { const L = UI.lis; if (!L || !L.plays) return; L.shown = true; render(); },
+  lisSen: b => { const L = UI.lis; if (L) startSense(b.dataset.m, L.d.s.map(x => ({ id: x[1], zh: x[2] })), L.d.zh, { keepOrder: true, back: 'listen' }); },
+  lisExit: () => { UI.lis = null; TTS.stop(); go('home'); },
   pracScopeSet: b => { UI.pscope = b.dataset.v; render(); const el = $('#prac-hub'); if (el) el.scrollIntoView(); },
   readPlay: () => {
     const r = READ_BY[UI.route.arg]; if (!r) return;

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "python3 tools/serve.py",
-    "test": "node tools/test-srs.js && node tools/check-lexicon.js && node tools/test-offline.js && node tools/test-recall.js && node tools/test-ref.js && node tools/test-variants.js && node tools/test-practice.js && node tools/test-flow.js && node tools/test-sense.js && node tools/test-read.js && node tools/check-reading.js && node tools/test-study.js && node tools/check-confuse.js"
+    "test": "node tools/test-srs.js && node tools/check-lexicon.js && node tools/test-offline.js && node tools/test-recall.js && node tools/test-ref.js && node tools/test-variants.js && node tools/test-practice.js && node tools/test-flow.js && node tools/test-sense.js && node tools/test-read.js && node tools/check-reading.js && node tools/test-study.js && node tools/check-confuse.js && node tools/check-dialogues.js && node tools/test-today.js"
   },
   "engines": {
     "node": ">=18"

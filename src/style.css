@@ -664,3 +664,37 @@ a.btn { box-sizing: border-box; }
 .rev-tools { justify-content: center; gap: 10px; }
 .rev-res.r1 .why { background: var(--cabai-soft); }
 .rev-res.r4 .why, .rev-res.r3 .why { background: var(--accent-soft); }
+
+/* 首页主卡：今日学习 */
+.flowmain { border: 1.5px solid var(--accent); gap: 12px; }
+.flowmain .btn.grow { flex: 1; }
+.fsteps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fstep { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--sunk); }
+.fstep .gi { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-2); font-weight: 800; font-size: 14px; flex-shrink: 0; }
+.fstep b { display: block; font-size: 15px; }
+.fstep small { display: block; font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
+.fstep.off { opacity: .55; }
+.fstep.done .gi { background: var(--accent); color: var(--accent-ink); }
+.fstep > .ico { width: 18px; height: 18px; color: var(--accent-2); flex-shrink: 0; }
+/* 学新词：先听例句 */
+.ctx-card { display: flex; align-items: center; gap: 14px; }
+.ctx-card .bigplay { width: 56px; height: 56px; flex-shrink: 0; }
+.ctx-card .bigplay .ico { width: 24px; height: 24px; }
+.ctx-card .grow { min-width: 0; }
+.ctx-id { font-size: 18px; font-weight: 600; line-height: 1.55; overflow-wrap: anywhere; }
+/* 单词卡：词根、口语形式 */
+.w-forms { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 15px; }
+.w-forms .tag { margin-left: 4px; }
+.w-forms .tag:first-child { margin-left: 0; }
+/* 盲听短对话 */
+.lis-lines { padding: 6px 0; }
+.lis-line { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.lis-line:last-child { border-bottom: 0; }
+.lis-line.cur { background: var(--accent-soft); }
+.lis-line .rspk { float: none; margin: 3px 0 0; flex-shrink: 0; }
+.lis-line .grow { min-width: 0; }
+.lis-line .say { flex-shrink: 0; }
+.lis-bar { display: block; height: 10px; margin-top: 8px; border-radius: 5px; background: var(--sunk); max-width: 100%; }
+/* 按钮里“播放 / 停止”两种文字（data-key 对上正在播放的内容时切换） */
+.when-on, .is-playing .when-off { display: none; }
+.is-playing .when-on { display: inline; }

@@ -10,7 +10,7 @@ const flags = offline => 'const OFFLINE = ' + offline + ';\nconst BUILD = ' + JS
 const audioJs = 'const AUDIO_PACKS = ' + JSON.stringify(audio.packs) + ';\nconst AUDIO_IDX = ' + JSON.stringify(audio.idx) + ';\nconst AUDIO_HUMAN = ' + JSON.stringify(audio.human || {}) + ';\nconst AUDIO_VAR = ' + JSON.stringify(audio.var || {}) + ';\nconst AUDIO_CREDIT = ' + JSON.stringify(audio.credit || { speakers: [], licenses: [] }) + ';\n';
 // vendor/ts-fsrs.js（FSRS 排程库，MIT）放在最前面，挂到全局 FSRS 上，srs.js 用它
 const vendor = readFileSync(at('./vendor/ts-fsrs.js'), 'utf8');
-const code = vendor + '\n' + ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'lexicon.js', 'grammar.js', 'ref.js', 'confuse.js', 'reading.js', 'pron.js', 'ipa.js', 'lookup.js', 'srs.js', 'app.js'].map(src).join('\n');
+const code = vendor + '\n' + ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'lexicon.js', 'grammar.js', 'ref.js', 'confuse.js', 'reading.js', 'dialogue-1.js', 'dialogue-2.js', 'dialogue-3.js', 'pron.js', 'ipa.js', 'lookup.js', 'srs.js', 'app.js'].map(src).join('\n');
 const body = `<div class="app">
   <nav class="nav" id="nav" aria-label="主导航"></nav>
   <div class="shell">

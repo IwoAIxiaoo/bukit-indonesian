@@ -1,10 +1,10 @@
 // 收集课程里所有需要发音的文本，输出 texts.json：[{key, text, pack}]
 const fs = require('fs'), vm = require('vm');
 const SRC = (process.env.BUKIT_ROOT || require('path').join(__dirname, '..')) + '/src/';   // 默认：tools/ 的上一级；脚本放在别处时用 BUKIT_ROOT 指定
-const code = ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'grammar.js', 'ref.js', 'pron.js', 'reading.js'].map(f => fs.readFileSync(SRC + f, 'utf8')).join('\n')
-  + '\n;globalThis.__out = { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS, READS, READ_GLOSS };';
+const code = ['pre.js', 'content-1.js', 'content-2.js', 'content-3.js', 'content-4.js', 'content-5.js', 'content-6.js', 'grammar.js', 'ref.js', 'pron.js', 'reading.js', 'dialogue-1.js', 'dialogue-2.js', 'dialogue-3.js'].map(f => fs.readFileSync(SRC + f, 'utf8')).join('\n')
+  + '\n;globalThis.__out = { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS, READS, READ_GLOSS, DIALOGS };';
 const ctx = { console }; vm.createContext(ctx); vm.runInContext(code, ctx);
-const { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS, READS, READ_GLOSS } = ctx.__out;
+const { TOPICS, DECKS, ALPHABET, RULES, PAIRS, REFS, READS, READ_GLOSS, DIALOGS } = ctx.__out;
 const key = t => String(t).toLowerCase().replace(/[\[\]«»“”"]/g, '').replace(/\s+/g, ' ').trim();
 const plain = t => String(t).replace(/[\[\]«»]/g, '');
 const items = new Map();
@@ -43,6 +43,9 @@ REFS.forEach(r => r.cards.forEach(c => { refInline(c.p); refInline(c.n); (c.t ||
 const readAdd = (text, pack, slow) => { if (!items.has(key(text))) add(text, pack, slow); };
 READS.forEach(r => { const p = 'read-' + r.lv; readAdd(r.t, p, false); r.s.forEach(x => readAdd(x[1], p, false)); r.g.forEach(g => readAdd(g[0], p, true)); });
 READ_GLOSS.forEach(g => readAdd(g[0], 'read-a', true));
+// 每课的短对话：第 1–10 课、11–21 课、22–31 课各一个包（dlg-1 / dlg-2 / dlg-3），只装新句子，不带慢读版
+const dlgPack = topic => { const i = TOPICS.findIndex(t => t.id === topic); return 'dlg-' + (i < 10 ? 1 : i < 21 ? 2 : 3); };
+DIALOGS.forEach(d => d.s.forEach(x => readAdd(x[1], dlgPack(d.topic), false)));
 const arr = [...items.values()];
 fs.writeFileSync(__dirname + '/texts.json', JSON.stringify(arr));
 const packs = {}; arr.forEach(x => x.packs.forEach(p => { packs[p] = (packs[p] || 0) + 1; }));

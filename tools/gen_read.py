@@ -14,7 +14,7 @@ ROUNDS, GOOD, MAXLEN, GAP = 4, 0.08, 26.0, 0.7
 if __name__ == '__main__':
     t0 = time.time()
     items = [x for x in json.load(open(os.path.join(HERE, 'texts.json')))
-             if not x.get('slow') and any(p.startswith('read-') for p in x['packs']) and not os.path.exists(os.path.join(OUT, x['id'] + '.mp3'))]
+             if not x.get('slow') and any(p.startswith(('read-', 'dlg-')) for p in x['packs']) and not os.path.exists(os.path.join(OUT, x['id'] + '.mp3'))]
     print('sentences to make', len(items), flush=True)
     os.environ.setdefault('HF_HUB_OFFLINE', '1')
     from faster_whisper import WhisperModel

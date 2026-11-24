@@ -48,7 +48,10 @@ const OUT = require('path').join(__dirname, 'shots') + '/'; require('fs').mkdirS
   await page.click('[data-act="study"]');
   let guard = 0, idle = 0;
   while (guard++ < 160) {
-    if (await page.$('.s-foot [data-act="next"], .qopt:not([disabled]), #spell-in:not([disabled]), [data-act="qnext"]')) idle = 0;   // 只数连续没东西可点的次数
+    if (await page.$('.s-foot [data-act="next"], .qopt:not([disabled]), #spell-in:not([disabled]), [data-act="qnext"], [data-act="revSkip"], [data-act="revNext"]')) idle = 0;   // 只数连续没东西可点的次数
+    // 最后一轮在复习打字卡上：直接看答案、继续
+    if (await page.$('[data-act="revNext"]')) { await page.click('[data-act="revNext"]'); await page.waitForTimeout(100); continue; }
+    if (await page.$('[data-act="revSkip"]')) { await page.click('[data-act="revSkip"]'); await page.waitForTimeout(100); continue; }
     const st = await page.evaluate(() => { const s = window.__s; return null; });
     const hasNext = await page.$('.s-foot [data-act="next"]');
     if (hasNext) {

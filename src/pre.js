@@ -58,3 +58,29 @@ function applyLexicon() {
     w.clozeSentence = cz ? { id: cz.id, zh: cz.zh, hint: cz.hint || w.zh } : null;
   });
 }
+
+/* ===== 短对话：每课按词序每 8 个词一段，每段一篇 A/B 对话（dialogue-*.js）=====
+   DLG(课的 id, 第几段, 中文标题, [[说话人, 印尼语, 中文], ...])。今日学习最后一步挑含今天新词最多的一段盲听。 */
+const DIALOGS = [];
+function DLG(topic, n, zh, s) { DIALOGS.push({ id: topic + '-' + n, topic, n, zh, s }); }
+// 一课的词按顺序每 8 个分一段，最后一段不足 4 个就并进前一段（对话也按这个分段写）
+function dlgChunks(t) {
+  const ch = [];
+  for (let i = 0; i < t.words.length; i += 8) ch.push(t.words.slice(i, i + 8));
+  if (ch.length > 1 && ch[ch.length - 1].length < 4) { const last = ch.pop(); ch[ch.length - 1] = ch[ch.length - 1].concat(last); }
+  return ch;
+}
+// 这段对话里有没有用到这个词：原形、词组、口语形式，或者加了词缀的形式（靠 lookup.js 的 stemCandidates 去词缀）
+const DLG_TOK = {};
+function dlgCovers(d, id) {
+  const w = WORDS[id];
+  if (!w) return false;
+  const toks = DLG_TOK[d.id] || (DLG_TOK[d.id] = d.s.map(x => lexTokens(x[1]).map(t => t.toLowerCase())));
+  const forms = [w.w].concat(w.colloquial || []).map(f => lexTokens(f).map(t => t.toLowerCase()));
+  const same = (t, x) => t === x || t.replace(/-?nya$/, '') === x;   // tempat tidurnya 也算 tempat tidur
+  const has = (line, f) => { for (let i = 0; i + f.length <= line.length; i++) if (f.every((x, j) => same(line[i + j], x))) return true; return false; };
+  if (toks.some(line => forms.some(f => has(line, f)))) return true;
+  if (forms[0].length !== 1) return false;
+  const base = forms[0][0];
+  return toks.some(line => line.some(t => { const tl = t.replace(/-?(nya|lah|kah|ku|mu)$/, ''); return tl === base || stemCandidates(t).includes(base); }));
+}

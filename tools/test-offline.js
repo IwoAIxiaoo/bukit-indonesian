@@ -108,7 +108,10 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   await page.click('[data-act="study"]');
   let guard = 0, idle = 0;
   while (guard++ < 160) {
-    if (await page.$('.s-foot [data-act="next"], .qopt:not([disabled]), #spell-in:not([disabled]), [data-act="qnext"]')) idle = 0;   // 只数连续没东西可点的次数
+    if (await page.$('.s-foot [data-act="next"], .qopt:not([disabled]), #spell-in:not([disabled]), [data-act="qnext"], [data-act="revSkip"], [data-act="revNext"]')) idle = 0;   // 只数连续没东西可点的次数
+    // 最后一轮在复习打字卡上：直接看答案、继续
+    if (await page.$('[data-act="revNext"]')) { await page.click('[data-act="revNext"]'); await page.waitForTimeout(100); continue; }
+    if (await page.$('[data-act="revSkip"]')) { await page.click('[data-act="revSkip"]'); await page.waitForTimeout(100); continue; }
     if (await page.$('.s-foot [data-act="next"]')) {
       if (await page.$('.deck')) { await page.click('.deck [data-act="dnext"]'); await page.waitForTimeout(300); }
       await page.click('.s-foot [data-act="next"]'); continue;

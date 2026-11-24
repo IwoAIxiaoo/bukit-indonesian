@@ -10,6 +10,7 @@
 - `src/reading.js`（短文阅读的短文、译文和生词表）
 - `src/confuse.js`（易混词分组和区分说明）
 - `src/lexicon.js`（词根、口语形式、挖空短句）
+- `src/dialogue-1.js` 到 `src/dialogue-3.js`（课文短对话）
 - `src/pron.js`（字母表、拼读规则、听辨词对）
 
 你可以：

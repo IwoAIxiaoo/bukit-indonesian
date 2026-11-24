@@ -54,7 +54,7 @@ for pi, name in enumerate(names):
         if not os.path.exists(f): missing.append(it['text']); continue
         b = open(f, 'rb').read(); entry = [len(buf), len(b)]; buf += b
         fs = os.path.join(HERE, SYN, it['id'] + '~s.mp3')
-        if it.get('slow') and not is_h and os.path.exists(fs) and name != 'ref' and not name.startswith('read-'):   # 速查表的包不带慢读版，慢速时由页面放慢
+        if it.get('slow') and not is_h and os.path.exists(fs) and name != 'ref' and not name.startswith(('read-', 'dlg-')):   # 速查表的包不带慢读版，慢速时由页面放慢
             bs = open(fs, 'rb').read(); entry += [len(buf), len(bs)]; buf += bs
         off[it['id']] = entry
         if is_h:

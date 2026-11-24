@@ -1,4 +1,4 @@
-// 错词本、收藏、已掌握、今日学习、跟打、听写 的测试。默认测离线版；测在线版：node tools/test-flow.js http://127.0.0.1:8765/bukit.html
+// 错词本、收藏、已掌握、跟打、听写 的测试（今日学习在 test-today.js）。默认测离线版；测在线版：node tools/test-flow.js http://127.0.0.1:8765/bukit.html
 const { chromium } = require('playwright');
 const URL0 = process.argv[2] || 'file://' + require('path').join(__dirname, '..', 'bukit-offline.html');
 const OFF = process.argv[3] === 'offline' || URL0.startsWith('file:');
@@ -41,11 +41,6 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   const text = () => p.evaluate(() => document.querySelector('#main').innerText.replace(/\s+/g, ' '));
   const tag = OFF ? 'off' : 'on';
   const id = k => seed.ids[k];
-
-  // ---- 首页：今日学习的安排
-  const home0 = await text();
-  check('home shows today\'s plan: review, new words, spelling', !!(await p.$('[data-act="flowStart"]')) && home0.includes('复习到期的词 → 学一组新词 → 默写今天学的词') && home0.includes('6 个词到期'), home0.slice(0, 120));
-  await p.locator('[data-act="flowStart"]').locator('xpath=ancestor::section').screenshot({ path: OUT + tag + '-flow-card.png' });
 
   // ---- 单词卡：收藏、已掌握
   await p.goto(URL0 + '#t-' + seed.topic); await p.waitForSelector('.wrow-main'); await p.waitForTimeout(300);
@@ -144,91 +139,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
     await pg.waitForTimeout(120); await pg.click('[data-act="revNext"]'); await pg.waitForTimeout(120);
     return true;
   };
-  // ---- 今日学习：中途退出
-  await p.goto(URL0 + '#home'); await p.waitForSelector('[data-act="flowStart"]'); await p.waitForTimeout(300);
-  await p.click('[data-act="flowStart"]'); await p.waitForSelector('.rev-card'); await p.waitForTimeout(300);
-  const f0 = await text();
-  check('today\'s session starts with the review', /今日学习/.test(f0) && /1\/4/.test(await p.evaluate(() => document.querySelector('.s-count').textContent.replace(/\s/g, ''))), f0.slice(0, 60));
-  await revAnswer(p);
-  await p.click('[data-act="revExit"]'); await p.waitForTimeout(300);
-  await p.goto(URL0 + '#home'); await p.waitForTimeout(400);
-  const f1 = await text();
-  check('leaving midway: home shows it in progress with 继续 and 结束', /今日学习 · 进行中/.test(f1) && !!(await p.$('[data-act="flowNext"]')) && !!(await p.$('[data-act="flowQuit"]')), f1.slice(0, 80));
-  await p.click('[data-act="flowQuit"]'); await p.waitForTimeout(300);
-  check('结束 returns to the plain start card', !!(await p.$('[data-act="flowStart"]')) && !(await p.$('[data-act="flowQuit"]')));
-
-  // ---- 今日学习：完整走一遍
-  await p.click('[data-act="flowStart"]'); await p.waitForSelector('.session'); await p.waitForTimeout(300);
-  for (let k = 0; k < 20; k++) {
-    if (await p.$('[data-act="flowNext"]')) break;
-    if (await p.$('.rev-card [data-w]') || await p.$('.rev-card')) { await revAnswer(p); }
-    else if (await p.$('.qopt:not([disabled])')) { await p.locator('.qopt:not([disabled])').first().click(); await p.waitForTimeout(200); }
-    else if (await p.$('[data-act="rqnext"]')) { await p.click('[data-act="rqnext"]'); await p.waitForTimeout(200); }
-    else await p.waitForTimeout(150);
-  }
-  const fb1 = await p.evaluate(() => (document.querySelector('[data-act="flowNext"]') || {}).textContent);
-  st = await state();
-  const old1 = st.words[id(1)], w0 = st.words[id(0)];
-  check('after the review the next step is offered: new words', fb1 === '下一步：学一组新词', String(fb1));
-  check('old 6-field records are reviewed normally (converted to an FSRS card)', Array.isArray(old1[10]) && old1[10][3] === 2 && old1[1] > seed.t && old1[6] === 2 && old1[5] === seed.t - 5, JSON.stringify(old1));
-  check('grading 认识 in review removes the word from the error book', w0[6] === 2, JSON.stringify(w0));
-  await p.screenshot({ path: OUT + tag + '-flow-next.png' });
-  await p.click('[data-act="flowNext"]'); await p.waitForSelector('.session'); await p.waitForTimeout(400);
-  // 学新词：一路点下去，小测随便答
-  let studied = false;
-  for (let k = 0; k < 60; k++) {
-    if (await p.$('[data-act="flowNext"]')) { studied = true; break; }
-    if (await p.$('.s-foot [data-act="next"]')) { await p.click('.s-foot [data-act="next"]'); await p.waitForTimeout(150); }
-    else if (await p.$('[data-act="qnext"]')) { await p.click('[data-act="qnext"]'); await p.waitForTimeout(200); }
-    else if (await p.$('.qopt:not([disabled])')) { await p.locator('.qopt:not([disabled])').first().click(); await p.waitForTimeout(250); }
-    else if (await p.$('#spell-in:not([disabled])')) { await p.fill('#spell-in', 'x'); await p.keyboard.press('Enter'); await p.waitForTimeout(250); }
-    else await p.waitForTimeout(250);
-  }
-  const fb2 = await p.evaluate(() => (document.querySelector('[data-act="flowNext"]') || {}).textContent);
-  st = await state();
-  const newToday = Object.keys(st.words).filter(x => st.words[x][5] === seed.t && st.words[x][0] > 0 && st.words[x][8] !== 1);
-  check('after the new words the next step is offered: spelling', studied && fb2 === '下一步：默写今天学的词' && newToday.length === 4, fb2 + ' new=' + newToday.length);
-  await p.click('[data-act="flowNext"]'); await p.waitForSelector('.pslots'); await p.waitForTimeout(300);
-  const sp0 = await p.evaluate(() => ({ head: document.querySelector('.session .eyebrow').textContent, count: document.querySelector('.s-count').textContent, w: document.querySelector('.qprompt .say').dataset.say }));
-  const newWords = newToday.map(x => p.evaluate(x => WORDS[x].w, x));
-  const nw = await Promise.all(newWords);
-  check('spelling step uses exactly the words learned today', /拼写挑战/.test(sp0.head) && sp0.count === '1/' + nw.length && nw.includes(sp0.w), JSON.stringify(sp0));
-  for (let k = 0; k < 10; k++) {
-    if (!(await p.$('.pslots'))) break;
-    const w = await p.evaluate(() => document.querySelector('.qprompt .say').dataset.say);
-    for (const c of w.toLowerCase().replace(/[^a-z]/g, '')) await p.keyboard.press(c);
-    await p.waitForTimeout(150);
-    await p.click('[data-act="pracNext"]'); await p.waitForTimeout(150);
-  }
-  const fb3 = await p.evaluate(() => (document.querySelector('[data-act="flowNext"]') || {}).textContent);
-  const spd = await text();
-  check('spelling done: last step offers to finish', fb3 === '完成今日学习' && new RegExp('答对 ' + nw.length + ' / ' + nw.length).test(spd) && /今天学的词/.test(spd), fb3 + ' | ' + spd.slice(0, 50));
-  await p.click('[data-act="flowNext"]'); await p.waitForTimeout(400);
-  const fin = await text();
-  const route = await p.evaluate(() => location.hash);
-  check('finishing returns home with a plain summary (no points, no levels)', route === '#home' && /今天这一轮做完了/.test(fin) && /新学 4 个词/.test(fin) && !/XP|经验值|积分/.test(fin), fin.slice(0, 80));
-  await p.screenshot({ path: OUT + tag + '-flow-done.png' });
-  const ov = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  check('no horizontal overflow', ov <= 0, String(ov));
-
-  // ---- 没有内容的步骤自动跳过
-  st = await state();
-  const dk = Object.keys(st.log)[0];
-  const reseed = async (mut) => {
-    await p.evaluate(([mut, t, dk]) => {
-      const s = JSON.parse(localStorage.getItem('bukit.v1')), now = Date.now();
-      Object.keys(s.words).forEach(k => { const w = s.words[k]; if (w[0] > 0 && w[8] !== 1) { w[1] = t + 5; w[7] = 0; if (mut !== 'today') w[5] = t - 3; } });
-      s.log = {}; s.log[dk] = { n: mut === 'goal' ? 10 : 0, r: 0, s: 0 };
-      localStorage.setItem('bukit.v1', JSON.stringify(s));
-      Storage.prototype.setItem = function () {};
-    }, [mut, seed.t, dk]);
-    await p.reload(); await boot();
-    return { txt: await text(), start: !!(await p.$('[data-act="flowStart"]')) };
-  };
-  const a1 = await reseed('nogoal');
-  check('nothing due: the plan skips the review', a1.start && a1.txt.includes('学一组新词 → 默写今天学的词') && !a1.txt.includes('复习到期的词 →'), a1.txt.slice(0, 80));
-  const a2 = await reseed('goal');
-  check('nothing due and the daily goal met: no "today" card at all', !a2.start && !/今日学习/.test(a2.txt), a2.txt.slice(0, 60));
+  // 今日学习（复习 → 新词 → 盲听）的测试在 test-today.js
 
   check('device speech never used', (await p.evaluate(() => window.__tts)) === 0);
   if (OFF) check('no network requests', net.length === 0, net.slice(0, 3).join(' '));

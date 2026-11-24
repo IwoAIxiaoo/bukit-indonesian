@@ -34,8 +34,10 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   const save = () => p.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
   const state = () => p.evaluate(() => JSON.parse(localStorage.getItem('bukit.v1')));
 
-  check('home has the practice entry', !!(await p.$('[data-act="pracHub"]')));
-  await p.click('[data-act="pracHub"]'); await p.waitForSelector('#prac-hub'); await p.waitForTimeout(300);
+  // 自由练习现在在复习页（首页只在今天的安排都做完时才给入口）
+  await p.evaluate(() => { location.hash = 'review'; }); await p.waitForSelector('#prac-hub'); await p.waitForTimeout(300);
+  // 热身的四种模式收在折叠区里，点之前先展开
+  const mode = async m => { await p.evaluate(() => { const d = document.querySelector('details.warm'); if (d) d.open = true; }); await p.click('.pmode[data-m="' + m + '"]'); };
   const hub = await p.evaluate(() => ({ modes: [...document.querySelectorAll('.pmode:not(.smode) b')].map(x => x.textContent), opts: document.querySelectorAll('#pscope option').length, sel: document.querySelector('#pscope').value, xp: /XP|经验值|等级/.test(document.querySelector('#main').innerText) }));
   check('hub: 10 modes, scope list (learned + error book + favourites + all + 31 lessons), no XP or levels', hub.modes.length === 10 && hub.opts === 35 && hub.sel === 'learned' && !hub.xp, hub.modes.join(' / '));
   await p.locator('#prac-hub').screenshot({ path: OUT + (OFF ? 'off' : 'on') + '-prac-hub.png' });
@@ -49,6 +51,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
     let right = null, kind = '';
     if (slots) { kind = 'spell'; right = pr.querySelector('.say').dataset.say; }
     else if (pr.querySelector('.bigplay')) { kind = 'listen'; const w = pr.querySelector('.bigplay').dataset.say; right = opts.find(v => WORDS[v].w === w); }
+    else if (pr.querySelector('.cloze') && document.querySelector('#ptype-in')) { kind = 'fill'; const z = pr.querySelector('.ex-zh').textContent, s = pr.querySelector('.cloze').textContent; right = Object.keys(WORDS).find(v => WORDS[v].ex.some(e => e.zh === z && e.id.replace(/\[[^\]]+\]/g, '') === s)); }
     else if (pr.querySelector('.cloze')) { kind = 'fill'; const z = pr.querySelector('.ex-zh').textContent, s = pr.querySelector('.cloze').textContent; right = opts.find(v => WORDS[v].ex.some(e => e.zh === z && e.id.replace(/\[[^\]]+\]/g, '') === s)); }
     else if (pr.querySelector('.w-word')) { kind = 'id2zh'; const w = pr.querySelector('.w-word').textContent; right = opts.find(v => WORDS[v].w === w); }
     else { kind = 'zh2id'; const z = pr.querySelector('.zh-big').textContent; right = opts.find(v => WORDS[v].zh === z); }
@@ -62,6 +65,9 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
       const seq = correct ? letters : letters.slice().reverse();
       if (byKeys) for (const c of seq) await p.keyboard.press(c);
       else for (const c of seq) { await p.locator('.ptile:not([disabled]):not(.back)', { hasText: new RegExp('^' + c + '$') }).first().click(); }
+    } else if (!q.opts.length && await p.$('#ptype-in')) {
+      // 句子填空（打字）
+      await p.fill('#ptype-in', correct ? await p.evaluate(id => WORDS[id].w, q.right) : 'zzz'); await p.keyboard.press('Enter');
     } else {
       const v = correct ? q.right : q.opts.find(x => x !== q.right);
       await p.locator('.qopt[data-v="' + v.replace(/"/g, '\\"') + '"]').click();
@@ -69,8 +75,8 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
     await p.waitForTimeout(120);
     return q;
   };
-  const runMode = async (mode, wrongAt) => {
-    await p.click('.pmode[data-m="' + mode + '"]'); await p.waitForSelector('.session'); await p.waitForTimeout(250);
+  const runMode = async (modeName, wrongAt) => {
+    await mode(modeName); await p.waitForSelector('.session'); await p.waitForTimeout(250);
     const seen = [];
     for (let k = 0; k < 20; k++) {
       if (!(await p.$('.qprompt'))) break;
@@ -82,7 +88,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   };
 
   // 1) 单词卡
-  await p.click('.pmode[data-m="cards"]'); await p.waitForSelector('.pcard'); await p.waitForTimeout(700);
+  await mode('cards'); await p.waitForSelector('.pcard'); await p.waitForTimeout(700);
   const c1 = await p.evaluate(() => ({ word: (document.querySelector('.pcard .w-word') || {}).textContent, zh: !!document.querySelector('.pcard .zh-big'), plays: window.__plays, count: document.querySelector('.s-count').textContent }));
   await p.click('.pcard'); await p.waitForTimeout(200);
   const c2 = await p.evaluate(() => ({ zh: (document.querySelector('.pcard .zh-big') || {}).textContent, ex: document.querySelectorAll('.session .exs .ex').length }));
@@ -121,7 +127,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   }
 
   // 4) 拼写挑战：点字母和键盘都能拼；拼错有提示
-  await p.click('.pmode[data-m="spell"]'); await p.waitForSelector('.pslots'); await p.waitForTimeout(300);
+  await mode('spell'); await p.waitForSelector('.pslots'); await p.waitForTimeout(300);
   const s0 = await p.evaluate(() => ({ slots: document.querySelectorAll('.pslot').length, tiles: document.querySelectorAll('.ptile:not(.back)').length, word: document.querySelector('.qprompt .say').dataset.say, shown: document.querySelector('.session').innerText }));
   const letters = s0.word.replace(/[^a-z]/gi, '').length;
   check('spelling: one slot per letter, tiles = letters + 3 extra, the word itself is not shown', s0.slots === letters && s0.tiles === letters + 3 && !s0.shown.toLowerCase().includes(s0.word.toLowerCase()), JSON.stringify({ slots: s0.slots, tiles: s0.tiles, word: s0.word }));
@@ -148,7 +154,7 @@ const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name
   await p.click('[data-act="pracExit"]'); await p.waitForSelector('#prac-hub');
 
   // 5) 模拟挑战：15 题混合、有倒计时、不逐题讲解
-  await p.click('.pmode[data-m="mock"]'); await p.waitForSelector('.qprompt'); await p.waitForTimeout(300);
+  await mode('mock'); await p.waitForSelector('.qprompt'); await p.waitForTimeout(300);
   const kinds = []; let timer0 = '', feedback = false;
   for (let k = 0; k < 15; k++) {
     const q = await answer(true, true); kinds.push(q.kind); if (k === 0) timer0 = q.timer;

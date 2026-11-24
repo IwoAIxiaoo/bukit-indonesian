@@ -125,3 +125,10 @@ function srsDaysUntil(s, now) {
   const c = cardFromRecord(s, now);
   return c ? Math.max(0, srsDay(+c.due) - srsDay(now || Date.now())) : null;
 }
+// 新学一个词（学新词流程里用）：New 卡，明天到期。最后一轮语境拼写的评分会立刻作为它的第一次复习写进来
+function srsLearnRecord(prev, now) {
+  now = now || Date.now();
+  const t = srsDay(now), due = srsDayStart(t + 1), c = SRS_LIB.createEmptyCard(new Date(due));
+  c.due = new Date(due);
+  return [1, t + 1, now, prev ? prev[3] || 0 : 0, prev ? prev[4] || 0 : 0, t, 2, 0, null, null, srsPack(c)];
+}
